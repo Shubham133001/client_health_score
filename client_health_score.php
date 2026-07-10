@@ -93,6 +93,7 @@ function client_health_score_activate()
                 `name` VARCHAR(100) NOT NULL,
                 `description` TEXT NULL,
                 `is_default` TINYINT(1) NOT NULL DEFAULT 0,
+                `settings` JSON NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX `idx_profiles_default` (`is_default`)
@@ -256,6 +257,7 @@ function client_health_score_activate()
                 `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 `client_id` INT(10) NULL,
                 `action` VARCHAR(100) NOT NULL,
+                `level` VARCHAR(15) NOT NULL DEFAULT 'info',
                 `description` TEXT NOT NULL,
                 `performed_by` VARCHAR(100) NOT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

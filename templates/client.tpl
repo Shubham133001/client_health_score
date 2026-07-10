@@ -23,7 +23,8 @@
                     <div style="font-size: 13px; margin-bottom: 15px;">
                         <span style="margin-right: 15px;"><strong>Client ID:</strong> {$client->id}</span>
                         <span style="margin-right: 15px;"><strong>Email:</strong> <a href="mailto:{$client->email}">{$client->email}</a></span>
-                        <span><strong>Status:</strong> <span class="label label-{if $client->status == 'Active'}success{else}default{/if}">{$client->status}</span></span>
+                        <span style="margin-right: 15px;"><strong>Status:</strong> <span class="label label-{if $client->status == 'Active'}success{else}default{/if}">{$client->status}</span></span>
+                        <span><strong>Score Band:</strong> <span class="label" style="background-color: {if $scoreRecord.score >= 80}#10b981{elseif $scoreRecord.score >= 50}#f59e0b{else}#ef4444{/if};">{if $scoreRecord.score >= 80}Healthy{elseif $scoreRecord.score >= 50}Warning{else}Critical{/if}</span></span>
                     </div>
                     <a href="clientssummary.php?userid={$client->id}" class="btn btn-default btn-xs" target="_blank">
                         <i class="fa fa-user"></i> Go to WHMCS Client Profile
@@ -75,36 +76,32 @@
                         <thead>
                             <tr style="background-color: #f9f9f9;">
                                 <th>Metric / Signal</th>
-                                <th>Value</th>
-                                <th class="text-center" width="100">Weight</th>
-                                <th class="text-center" width="100">Impact</th>
+                                <th>Explanation / Details</th>
+                                <th class="text-center" width="120">Impact</th>
                             </tr>
                         </thead>
                         <tbody>
                             {if $breakdown}
                                 {foreach $breakdown as $key => $metric}
+                                    {if $key !== 'risk_drivers'}
                                     <tr>
                                         <td>
-                                            <strong style="text-transform: capitalize;">{str_replace('_', ' ', $key)}</strong>
+                                            <strong style="text-transform: capitalize;">{$metric.name|default:str_replace('_', ' ', $key)}</strong>
                                         </td>
                                         <td>
-                                            {if is_array($metric.value)}
-                                                {json_encode($metric.value)}
-                                            {else}
-                                                {$metric.value}
-                                            {/if}
+                                            {$metric.explanation}
                                         </td>
-                                        <td class="text-center">{$metric.weight}</td>
                                         <td class="text-center">
-                                            {if $metric.impact < 0}
-                                                <span class="text-danger" style="font-weight: bold;">{$metric.impact}</span>
-                                            {elseif $metric.impact > 0}
-                                                <span class="text-success" style="font-weight: bold;">+{$metric.impact}</span>
+                                            {if $metric.points < 0}
+                                                <span class="text-danger" style="font-weight: bold;">{$metric.points}</span>
+                                            {elseif $metric.points > 0}
+                                                <span class="text-success" style="font-weight: bold;">+{$metric.points}</span>
                                             {else}
                                                 <span class="text-muted">0</span>
                                             {/if}
                                         </td>
                                     </tr>
+                                    {/if}
                                 {/foreach}
                             {else}
                                 <tr>
@@ -125,6 +122,11 @@
                         <div style="width: 100%; max-width: 600px; margin: 0 auto;">
                             <svg id="historyChartSvg" width="100%" height="160" style="background-color: #fafafa; border: 1px solid #e9ecef; border-radius: 4px; padding: 10px;"></svg>
                         </div>
+                        {if count($history) == 1}
+                            <div style="margin-top: 10px; font-size: 11px; color: #777;">
+                                <i class="fa fa-info-circle"></i> Initial health snapshot recorded today. Trend lines will form as scores are recalculated daily.
+                            </div>
+                        {/if}
                     {else}
                         <div class="text-muted" style="padding: 30px 0;">No historic snapshots available for this client yet.</div>
                     {/if}
@@ -165,6 +167,35 @@
                         <span>Last Score Update:</span>
                         <span class="text-muted">{$scoreRecord.updated_at|default:'Never'}</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Alert History -->
+            <div class="panel panel-default" style="margin-bottom: 20px;">
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-bell"></i> Alert History</div>
+                <div class="panel-body" style="padding: 0;">
+                    {if $alerts}
+                        <table class="table table-striped" style="margin-bottom: 0; font-size: 12px;">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Message</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {foreach $alerts as $alert}
+                                    <tr>
+                                        <td><span class="label label-{if $alert.severity == 'danger'}danger{else}info{/if}">{$alert.type}</span></td>
+                                        <td>{$alert.message}</td>
+                                        <td class="text-nowrap">{$alert.created_at|date_format:"%Y-%m-%d"}</td>
+                                    </tr>
+                                {/foreach}
+                            </tbody>
+                        </table>
+                    {else}
+                        <div style="padding: 15px; text-align: center;" class="text-muted">No alert history recorded.</div>
+                    {/if}
                 </div>
             </div>
         </div>

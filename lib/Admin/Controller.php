@@ -165,11 +165,85 @@ class Controller
             return '<div class="alert alert-danger">You do not have permission to export client health data.</div>';
         }
 
-        $search = trim((string)($_REQUEST['search'] ?? ''));
-        $statusFilter = trim((string)($_REQUEST['status'] ?? ''));
+        $query = Capsule::table('tblclients')
+            ->leftJoin('mod_chs_scores', 'tblclients.id', '=', 'mod_chs_scores.client_id')
+            ->select([
+                'tblclients.id',
+                'tblclients.firstname',
+                'tblclients.lastname',
+                'tblclients.companyname',
+                'tblclients.email',
+                'tblclients.groupid',
+                'mod_chs_scores.score',
+                'mod_chs_scores.payment_score',
+                'mod_chs_scores.engagement_score',
+                'mod_chs_scores.trend',
+                'mod_chs_scores.breakdown',
+                'mod_chs_scores.updated_at',
+            ])
+            ->where('tblclients.status', '!=', 'Closed');
+
+        // Apply filters:
+        // 1. Group Filter
+        if (!empty($_REQUEST['group_id'])) {
+            $query->where('tblclients.groupid', (int)$_REQUEST['group_id']);
+        }
+
+        // 2. Score Range Filter
+        if (isset($_REQUEST['min_score']) && $_REQUEST['min_score'] !== '') {
+            $query->where('mod_chs_scores.score', '>=', (int)$_REQUEST['min_score']);
+        }
+        if (isset($_REQUEST['max_score']) && $_REQUEST['max_score'] !== '') {
+            $query->where('mod_chs_scores.score', '<=', (int)$_REQUEST['max_score']);
+        }
+
+        // 3. Date Range Filter (Client SignUp Date)
+        if (!empty($_REQUEST['start_date'])) {
+            $query->where('tblclients.datecreated', '>=', $_REQUEST['start_date']);
+        }
+        if (!empty($_REQUEST['end_date'])) {
+            $query->where('tblclients.datecreated', '<=', $_REQUEST['end_date'] . ' 23:59:59');
+        }
+
+        $records = $query->get()->map(function ($item) {
+            return (array)$item;
+        })->toArray();
 
         $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
-        $data = $clientController->getScores(1, 100000, $search, $statusFilter, 'score', 'desc');
+
+        // 4. Tier, Product Profile & Minimum MRR Filters in PHP
+        $filtered = [];
+        $filterTier = trim((string)($_REQUEST['tier'] ?? ''));
+        $filterProfile = (int)($_REQUEST['profile_id'] ?? 0);
+        $minMrr = (float)($_REQUEST['min_mrr'] ?? 0.0);
+
+        foreach ($records as $item) {
+            $clientId = (int)$item['id'];
+            $score = $item['score'] !== null ? (int)$item['score'] : 100;
+
+            // Resolve profile ID
+            $profileId = $clientController->resolveProfileIdForClient($clientId);
+            if ($filterProfile > 0 && $profileId !== $filterProfile) {
+                continue;
+            }
+
+            // Calculate MRR
+            $mrr = $clientController->getClientMRR($clientId);
+            if ($mrr < $minMrr) {
+                continue;
+            }
+
+            // Resolve Tier
+            $tierName = $clientController->getTierForScore($score, $profileId);
+            if (!empty($filterTier) && strtolower($tierName) !== strtolower($filterTier)) {
+                continue;
+            }
+
+            $item['resolved_profile_id'] = $profileId;
+            $item['mrr'] = $mrr;
+            $item['tier'] = $tierName;
+            $filtered[] = $item;
+        }
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=client-health-scores-' . date('Y-m-d') . '.csv');
@@ -179,37 +253,56 @@ class Controller
         fputcsv($output, [
             'Client ID',
             'Client Name',
-            'Company Name',
-            'Email Address',
-            'Health Score',
+            'Company',
+            'Email',
+            'Score',
+            'Tier',
             'Payment Score',
             'Engagement Score',
+            'MRR',
             'Trend',
-            'Last Recalculated'
+            'Last Calculated',
+            'Risk Drivers'
         ]);
 
-        foreach ($data['items'] as $item) {
-            $scoreRecord = Capsule::table('mod_chs_scores')
-                ->where('client_id', $item['client_id'])
-                ->first();
-            $paymentScore = $scoreRecord ? $scoreRecord->payment_score : 100;
-            $engagementScore = $scoreRecord ? $scoreRecord->engagement_score : 100;
+        foreach ($filtered as $item) {
+            // Extract Risk Drivers
+            $drivers = [];
+            if ($item['breakdown']) {
+                $b = json_decode($item['breakdown'], true);
+                $rawDrivers = $b['risk_drivers'] ?? [];
+                $drivers = array_map(function($d) {
+                    return $d['name'] . ' (' . $d['points'] . ')';
+                }, $rawDrivers);
+            }
 
             fputcsv($output, [
-                $item['client_id'],
+                $item['id'],
                 $item['firstname'] . ' ' . $item['lastname'],
                 $item['companyname'] ?: '-',
                 $item['email'],
                 $item['score'] !== null ? $item['score'] : 'Unevaluated',
-                $paymentScore,
-                $engagementScore,
+                $item['tier'],
+                $item['payment_score'] !== null ? $item['payment_score'] : 100,
+                $item['engagement_score'] !== null ? $item['engagement_score'] : 100,
+                '$' . number_format($item['mrr'], 2),
                 strtoupper($item['trend'] ?: 'stable'),
-                $item['updated_at'] ?: 'Never'
+                $item['updated_at'] ?: 'Never',
+                empty($drivers) ? 'None' : implode('; ', $drivers)
             ]);
         }
 
         fclose($output);
         exit;
+    }
+
+    public function export_pdf($vars)
+    {
+        // Stub action: prepares the routing and UI architecture for future PDF generation library integration (e.g. TCPDF or Dompdf)
+        if (!$this->hasPermission('view')) {
+            return '<div class="alert alert-danger">You do not have permission to export data.</div>';
+        }
+        return '<div style="margin: 20px;" class="alert alert-info"><h4><i class="fa fa-info-circle"></i> PDF Export Planned</h4><p>PDF Export capabilities are planned for a future update. Please use the CSV Export function in the interim.</p></div>';
     }
 
     /**
@@ -350,7 +443,7 @@ class Controller
         if (!$client) {
             return "<div class='alert alert-danger'>Client not found.</div>";
         }
-        $client = (array)$client;
+        $client = (object)$client;
 
         $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
 
@@ -373,6 +466,16 @@ class Controller
 
         // Fetch 30 days history snapshots
         $history = $clientController->getHistoryForClient($clientId, 30);
+
+        // Fetch alert history
+        $alerts = Capsule::table('mod_chs_alerts')
+            ->where('client_id', $clientId)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return (array)$item;
+            })
+            ->toArray();
 
         // Calculate breakdown parameters
         $unpaidInvoices = Capsule::table('tblinvoices')
@@ -402,6 +505,7 @@ class Controller
             'scoreRecord'     => $scoreRecord,
             'breakdown'       => $breakdown,
             'history'         => $history,
+            'alerts'          => $alerts,
             'unpaidInvoices'  => $unpaidInvoices,
             'overdueInvoices' => $overdueInvoices,
             'openTickets'     => $openTickets,
@@ -433,7 +537,7 @@ class Controller
         $bands = Capsule::table('mod_chs_score_bands')
             ->orderBy('min_score', 'desc')
             ->get()
-            ->map(function ($item) {
+            ->map(function ($item) {  
                 return (array)$item;
             })
             ->toArray();
@@ -450,7 +554,7 @@ class Controller
     /**
      * Write an audit log entry.
      */
-    private function logAudit(string $action, string $description)
+    private function logAudit(string $action, string $description, string $level = 'info')
     {
         $adminId = (int)($_SESSION['adminid'] ?? 0);
         $username = 'system';
@@ -463,6 +567,7 @@ class Controller
         Capsule::table('mod_chs_audit_logs')->insert([
             'client_id'    => null,
             'action'       => $action,
+            'level'        => $level,
             'description'  => $description,
             'performed_by' => $username,
             'created_at'   => date('Y-m-d H:i:s'),
@@ -807,6 +912,29 @@ class Controller
                 exit;
             }
 
+            // If offset is 0, initialize the recalculation log
+            $adminId = (int)($_SESSION['adminid'] ?? 0);
+            $username = 'system';
+            if ($adminId > 0) {
+                $username = Capsule::table('tbladmins')
+                    ->where('id', $adminId)
+                    ->value('username') ?? 'admin_' . $adminId;
+            }
+
+            if ($offset === 0) {
+                $stats = $clientController->getStats();
+                $totalClients = $stats['total_clients'];
+
+                $recalcId = Capsule::table('mod_chs_recalculations')->insertGetId([
+                    'status'            => 'processing',
+                    'total_clients'     => $totalClients,
+                    'processed_clients' => 0,
+                    'started_at'        => date('Y-m-d H:i:s'),
+                    'triggered_by'      => $username,
+                ]);
+                $_SESSION['chs_recalc_id'] = $recalcId;
+            }
+
             // Recalculate
             $clientController->calculateBatch($clientIds);
 
@@ -817,6 +945,29 @@ class Controller
             $processedSoFar = $offset + count($clientIds);
             $done = $processedSoFar >= $totalClients;
 
+            // Update recalculation progress
+            $recalcId = (int)($_SESSION['chs_recalc_id'] ?? 0);
+            if ($recalcId > 0) {
+                $updateData = [
+                    'processed_clients' => min($processedSoFar, $totalClients),
+                ];
+                if ($done) {
+                    $updateData['status'] = 'completed';
+                    $updateData['completed_at'] = date('Y-m-d H:i:s');
+                    unset($_SESSION['chs_recalc_id']);
+
+                    $this->logAudit(
+                        'manual_recalculation',
+                        "Completed manual recalculation for {$processedSoFar} clients.",
+                        'info'
+                    );
+                }
+
+                Capsule::table('mod_chs_recalculations')
+                    ->where('id', $recalcId)
+                    ->update($updateData);
+            }
+
             echo json_encode([
                 'success'     => true,
                 'done'        => $done,
@@ -826,6 +977,17 @@ class Controller
             ]);
             exit;
         } catch (\Exception $e) {
+            $recalcId = (int)($_SESSION['chs_recalc_id'] ?? 0);
+            if ($recalcId > 0) {
+                Capsule::table('mod_chs_recalculations')
+                    ->where('id', $recalcId)
+                    ->update([
+                        'status'       => 'failed',
+                        'completed_at' => date('Y-m-d H:i:s'),
+                    ]);
+                unset($_SESSION['chs_recalc_id']);
+            }
+
             echo json_encode([
                 'success' => false,
                 'error'   => $e->getMessage(),

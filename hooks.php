@@ -14,21 +14,6 @@ if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
 
-// Autoloader registration fallback for hooks environment
-// spl_autoload_register(function ($class) {
-//     $prefix = 'WHMCS\\Module\\Addon\\ClientHealthScore\\';
-//     $baseDir = __DIR__ . '/lib/';
-//     $len = strlen($prefix);
-//     if (strncmp($prefix, $class, $len) !== 0) {
-//         return;
-//     }
-//     $relativeClass = substr($class, $len);
-//     $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
-//     if (file_exists($file)) {
-//         require_once $file;
-//     }
-// });
-
 /**
  * Trigger quick recalculation for a single client safely.
  *
