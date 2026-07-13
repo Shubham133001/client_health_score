@@ -308,6 +308,9 @@ class Controller
     /**
      * Render the main dashboard view.
      */
+    /**
+     * Render the main dashboard view.
+     */
     private function dashboardPage(array $vars): string
     {
         $page = (int)($_REQUEST['page'] ?? 1);
@@ -318,11 +321,13 @@ class Controller
         $statusFilter = trim((string)($_REQUEST['status'] ?? ''));
         $sort = trim((string)($_REQUEST['sort'] ?? ''));
         $dir = trim((string)($_REQUEST['dir'] ?? ''));
+        $groupIdFilter = (int)($_REQUEST['group_id'] ?? 0);
+        $profileIdFilter = (int)($_REQUEST['profile_id'] ?? 0);
 
         $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
 
         // Fetch paginated scores
-        $scoresData = $clientController->getScores($page, $limit, $search, $statusFilter, $sort, $dir);
+        $scoresData = $clientController->getScores($page, $limit, $search, $statusFilter, $sort, $dir, $groupIdFilter, $profileIdFilter);
         $totalPages = (int)ceil($scoresData['total'] / $limit);
         $totalPages = max(1, $totalPages);
 
@@ -333,7 +338,7 @@ class Controller
         $mrrHosting = Capsule::table('tblhosting')
             ->where('domainstatus', 'Active')
             ->whereIn('userid', function ($q) {
-                $q->select('client_id')->from('mod_chs_scores')->where('score', '<', 50);
+                $q->select('client_id')->from('mod_chs_scores')->where('score', '<', 60);
             })
             ->selectRaw("SUM(
                 CASE 
@@ -351,7 +356,7 @@ class Controller
         $mrrDomains = Capsule::table('tbldomains')
             ->where('status', 'Active')
             ->whereIn('userid', function ($q) {
-                $q->select('client_id')->from('mod_chs_scores')->where('score', '<', 50);
+                $q->select('client_id')->from('mod_chs_scores')->where('score', '<', 60);
             })
             ->sum(Capsule::raw('recurringamount / registrationperiod / 12')) ?: 0.00;
 
@@ -360,11 +365,10 @@ class Controller
         // Fetch distributions for charts
         $stats['tiers_dist'] = (array)Capsule::table('mod_chs_scores')
             ->selectRaw('
-                SUM(CASE WHEN score >= 95 THEN 1 ELSE 0 END) as platinum,
-                SUM(CASE WHEN score >= 85 AND score < 95 THEN 1 ELSE 0 END) as gold,
-                SUM(CASE WHEN score >= 70 AND score < 85 THEN 1 ELSE 0 END) as silver,
-                SUM(CASE WHEN score >= 50 AND score < 70 THEN 1 ELSE 0 END) as bronze,
-                SUM(CASE WHEN score < 50 THEN 1 ELSE 0 END) as standard
+                SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as platinum,
+                SUM(CASE WHEN score >= 60 AND score < 80 THEN 1 ELSE 0 END) as gold,
+                SUM(CASE WHEN score >= 35 AND score < 60 THEN 1 ELSE 0 END) as silver,
+                SUM(CASE WHEN score < 35 THEN 1 ELSE 0 END) as standard
             ')
             ->first();
 
@@ -408,6 +412,22 @@ class Controller
             })
             ->toArray();
 
+        $clientGroups = Capsule::table('tblclientgroups')
+            ->select('id', 'groupname')
+            ->get()
+            ->map(function ($item) {
+                return (array)$item;
+            })
+            ->toArray();
+
+        $scoringProfiles = Capsule::table('mod_chs_profiles')
+            ->select('id', 'name')
+            ->get()
+            ->map(function ($item) {
+                return (array)$item;
+            })
+            ->toArray();
+
         return self::renderTemplate('dashboard', [
             'moduleLink'         => $vars['modulelink'],
             'stats'              => $stats,
@@ -421,6 +441,10 @@ class Controller
             'dir'                => $dir,
             'recentDrops'        => $recentDrops,
             'recentImprovements' => $recentImprovements,
+            'clientGroups'       => $clientGroups,
+            'scoringProfiles'    => $scoringProfiles,
+            'groupIdFilter'      => $groupIdFilter,
+            'profileIdFilter'    => $profileIdFilter,
         ]);
     }
 
@@ -454,6 +478,24 @@ class Controller
         if (!$scoreRecord) {
             $clientController->calculateForClient($clientId);
             $scoreRecord = $clientController->getScoreForClient($clientId);
+        }
+
+        // Resolve tier name and color
+        $tiers = Capsule::table('mod_chs_tiers')
+            ->orderBy('min_score', 'desc')
+            ->get()
+            ->toArray();
+
+        $tierName = 'Unevaluated';
+        $tierColor = '#6b7280';
+        if ($scoreRecord && isset($scoreRecord['score'])) {
+            foreach ($tiers as $t) {
+                if ($scoreRecord['score'] >= $t->min_score && $scoreRecord['score'] <= $t->max_score) {
+                    $tierName = $t->name;
+                    $tierColor = $t->badge_color;
+                    break;
+                }
+            }
         }
 
         // Parse breakdown data
@@ -511,6 +553,8 @@ class Controller
             'openTickets'     => $openTickets,
             'activeServices'  => $activeServices,
             'success'         => isset($_REQUEST['success']),
+            'tierName'        => $tierName,
+            'tierColor'       => $tierColor,
         ]);
     }
 
@@ -542,11 +586,18 @@ class Controller
             })
             ->toArray();
 
+        $settingsRaw = Capsule::table('mod_chs_settings')->get();
+        $settings = [];
+        foreach ($settingsRaw as $s) {
+            $settings[$s->key] = $s->value;
+        }
+
         return self::renderTemplate('settings', [
             'moduleLink' => $vars['modulelink'],
             'rules'      => $rules,
             'tiers'      => $tiers,
             'bands'      => $bands,
+            'settings'   => $settings,
             'message'    => $message,
         ]);
     }
@@ -570,6 +621,7 @@ class Controller
             'level'        => $level,
             'description'  => $description,
             'performed_by' => $username,
+            'ip_address'   => $_SERVER['REMOTE_ADDR'] ?? '',
             'created_at'   => date('Y-m-d H:i:s'),
         ]);
     }
@@ -683,6 +735,27 @@ class Controller
                 $this->logAudit(
                     'update_health_band',
                     "Updated health band {$bandName}: min {$oldBand->min_score} -> {$minVal}, max {$oldBand->max_score} -> {$maxVal}"
+                );
+            }
+        }
+
+        // 4. Save General, Alert, Webhook & Digest Settings
+        $postedSettings = $_POST['settings'] ?? [];
+        foreach ($postedSettings as $key => $value) {
+            $oldSettingValue = Capsule::table('mod_chs_settings')
+                ->where('key', $key)
+                ->value('value');
+            
+            if ($oldSettingValue !== $value) {
+                Capsule::table('mod_chs_settings')
+                    ->updateOrInsert(
+                        ['key' => $key],
+                        ['value' => $value, 'updated_at' => date('Y-m-d H:i:s')]
+                    );
+
+                $this->logAudit(
+                    'update_setting',
+                    "Updated setting {$key} to " . ($value === '' ? '(empty)' : $value)
                 );
             }
         }

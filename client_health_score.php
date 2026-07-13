@@ -260,6 +260,7 @@ function client_health_score_activate()
                 `level` VARCHAR(15) NOT NULL DEFAULT 'info',
                 `description` TEXT NOT NULL,
                 `performed_by` VARCHAR(100) NOT NULL,
+                `ip_address` VARCHAR(45) NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX `idx_audit_logs_client` (`client_id`),
                 CONSTRAINT `fk_audit_logs_client` FOREIGN KEY (`client_id`) REFERENCES `tblclients` (`id`) ON DELETE SET NULL
@@ -297,48 +298,65 @@ function client_health_score_activate()
             'name'        => 'Default Scoring Profile',
             'description' => 'Standard health calculation weights for general clients.',
             'is_default'  => 1,
+            'settings'    => json_encode([
+                'payment_weight'       => 50.0,
+                'engagement_weight'    => 50.0,
+                'dampening_enabled'    => true,
+                'dampening_threshold'  => 60,
+                'dampening_multiplier' => 1.5,
+                'trend_lookback_days'  => 14,
+            ])
         ]);
 
         $rules = [
+            // Payment sub-factors
             [
                 'profile_id' => $profileId,
-                'metric_key' => 'client_tenure',
-                'weight'     => 2.00,
-                'is_enabled' => 1,
-                'config'     => json_encode(['max_points' => 20]),
-            ],
-            [
-                'profile_id' => $profileId,
-                'metric_key' => 'unpaid_invoices',
-                'weight'     => -5.00,
+                'metric_key' => 'avg_days_late',
+                'weight'     => 40.00,
                 'is_enabled' => 1,
                 'config'     => json_encode([]),
             ],
             [
                 'profile_id' => $profileId,
-                'metric_key' => 'overdue_invoices',
-                'weight'     => -10.00,
+                'metric_key' => 'failed_payment_attempts',
+                'weight'     => 30.00,
                 'is_enabled' => 1,
                 'config'     => json_encode([]),
             ],
             [
                 'profile_id' => $profileId,
-                'metric_key' => 'active_services',
-                'weight'     => 5.00,
+                'metric_key' => 'overdue_invoice_count',
+                'weight'     => 30.00,
                 'is_enabled' => 1,
-                'config'     => json_encode(['max_points' => 30]),
+                'config'     => json_encode([]),
+            ],
+            // Engagement sub-factors
+            [
+                'profile_id' => $profileId,
+                'metric_key' => 'login_recency_days',
+                'weight'     => 35.00,
+                'is_enabled' => 1,
+                'config'     => json_encode([]),
             ],
             [
                 'profile_id' => $profileId,
-                'metric_key' => 'cancelled_services',
-                'weight'     => -15.00,
+                'metric_key' => 'login_count_90_days',
+                'weight'     => 25.00,
                 'is_enabled' => 1,
-                'config'     => json_encode(['lookback_days' => 180]),
+                'config'     => json_encode([]),
             ],
             [
                 'profile_id' => $profileId,
-                'metric_key' => 'open_tickets',
-                'weight'     => -5.00,
+                'metric_key' => 'downgrade_count_12_months',
+                'weight'     => 20.00,
+                'is_enabled' => 1,
+                'config'     => json_encode([]),
+            ],
+            [
+                'profile_id' => $profileId,
+                'metric_key' => 'usage_trend',
+                'weight'     => 20.00,
                 'is_enabled' => 1,
                 'config'     => json_encode([]),
             ],
@@ -354,16 +372,23 @@ function client_health_score_activate()
                 'badge_color'    => '#10b981',
             ],
             [
-                'name'           => 'Warning',
-                'min_score'      => 50,
+                'name'           => 'Watch',
+                'min_score'      => 60,
                 'max_score'      => 79,
                 'severity_level' => 'warning',
                 'badge_color'    => '#f59e0b',
             ],
             [
+                'name'           => 'At-Risk',
+                'min_score'      => 35,
+                'max_score'      => 59,
+                'severity_level' => 'danger',
+                'badge_color'    => '#f0ad4e',
+            ],
+            [
                 'name'           => 'Critical',
                 'min_score'      => 0,
-                'max_score'      => 49,
+                'max_score'      => 34,
                 'severity_level' => 'danger',
                 'badge_color'    => '#ef4444',
             ],
@@ -372,37 +397,52 @@ function client_health_score_activate()
 
         $tiers = [
             [
-                'name'        => 'Platinum VIP',
-                'min_score'   => 95,
+                'name'        => 'Healthy',
+                'min_score'   => 80,
                 'max_score'   => 100,
-                'badge_color' => '#4f46e5',
+                'badge_color' => '#10b981',
             ],
             [
-                'name'        => 'Gold Client',
-                'min_score'   => 85,
-                'max_score'   => 94,
-                'badge_color' => '#eab308',
+                'name'        => 'Watch',
+                'min_score'   => 60,
+                'max_score'   => 79,
+                'badge_color' => '#f59e0b',
             ],
             [
-                'name'        => 'Silver Client',
-                'min_score'   => 70,
-                'max_score'   => 84,
-                'badge_color' => '#94a3b8',
+                'name'        => 'At-Risk',
+                'min_score'   => 35,
+                'max_score'   => 59,
+                'badge_color' => '#f0ad4e',
             ],
             [
-                'name'        => 'Bronze Client',
-                'min_score'   => 50,
-                'max_score'   => 69,
-                'badge_color' => '#b45309',
-            ],
-            [
-                'name'        => 'Standard Client',
+                'name'        => 'Critical',
                 'min_score'   => 0,
-                'max_score'   => 49,
-                'badge_color' => '#6b7280',
+                'max_score'   => 34,
+                'badge_color' => '#ef4444',
             ],
         ];
         Capsule::table('mod_chs_tiers')->insert($tiers);
+
+        // Seed default settings config keys
+        $settings = [
+            ['key' => 'payment_weight', 'value' => '50.0'],
+            ['key' => 'engagement_weight', 'value' => '50.0'],
+            ['key' => 'trend_lookback_days', 'value' => '14'],
+            ['key' => 'alert_threshold', 'value' => '50'],
+            ['key' => 'alert_cooldown', 'value' => '24'],
+            ['key' => 'alert_enable_tier', 'value' => '1'],
+            ['key' => 'alert_enable_sudden', 'value' => '1'],
+            ['key' => 'digest_enabled', 'value' => '1'],
+            ['key' => 'digest_day', 'value' => 'Monday'],
+            ['key' => 'digest_time', 'value' => '09:00'],
+            ['key' => 'digest_recipients', 'value' => ''],
+            ['key' => 'webhook_slack_url', 'value' => ''],
+            ['key' => 'webhook_discord_url', 'value' => ''],
+            ['key' => 'webhook_teams_url', 'value' => ''],
+            ['key' => 'webhook_generic_url', 'value' => ''],
+            ['key' => 'cron_batch_size', 'value' => '100'],
+        ];
+        Capsule::table('mod_chs_settings')->insert($settings);
 
         return [
             'status'      => 'success',

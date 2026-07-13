@@ -24,7 +24,7 @@
                         <span style="margin-right: 15px;"><strong>Client ID:</strong> {$client->id}</span>
                         <span style="margin-right: 15px;"><strong>Email:</strong> <a href="mailto:{$client->email}">{$client->email}</a></span>
                         <span style="margin-right: 15px;"><strong>Status:</strong> <span class="label label-{if $client->status == 'Active'}success{else}default{/if}">{$client->status}</span></span>
-                        <span><strong>Score Band:</strong> <span class="label" style="background-color: {if $scoreRecord.score >= 80}#10b981{elseif $scoreRecord.score >= 50}#f59e0b{else}#ef4444{/if};">{if $scoreRecord.score >= 80}Healthy{elseif $scoreRecord.score >= 50}Warning{else}Critical{/if}</span></span>
+                        <span><strong>Score Band:</strong> <span class="label" style="background-color: {$tierColor|default:'#6b7280'}; text-transform: uppercase;">{$tierName}</span></span>
                     </div>
                     <a href="clientssummary.php?userid={$client->id}" class="btn btn-default btn-xs" target="_blank">
                         <i class="fa fa-user"></i> Go to WHMCS Client Profile
@@ -34,17 +34,17 @@
                 <div class="col-sm-4 text-center">
                     <div style="display: inline-block; position: relative; width: 120px; height: 120px;">
                         <svg width="120" height="120" viewBox="0 0 120 120">
-                            <!-- Background Track -->
-                            <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="10" />
-                            <!-- Colored Ring -->
-                            <circle cx="60" cy="60" r="50" fill="none" 
-                                    stroke="{if $scoreRecord.score >= 80}#10b981{elseif $scoreRecord.score >= 50}#f59e0b{else}#ef4444{/if}" 
-                                    stroke-width="10" 
-                                    stroke-dasharray="314" 
-                                    stroke-dashoffset="{314 - (314 * $scoreRecord.score / 100)}" 
-                                    stroke-linecap="round" 
-                                    transform="rotate(-90 60 60)" 
-                                    style="transition: stroke-dashoffset 0.8s ease;" />
+                             <!-- Background Track -->
+                             <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="10" />
+                             <!-- Colored Ring -->
+                             <circle cx="60" cy="60" r="50" fill="none" 
+                                     stroke="{$tierColor|default:'#6b7280'}" 
+                                     stroke-width="10" 
+                                     stroke-dasharray="314" 
+                                     stroke-dashoffset="{314 - (314 * $scoreRecord.score / 100)}" 
+                                     stroke-linecap="round" 
+                                     transform="rotate(-90 60 60)" 
+                                     style="transition: stroke-dashoffset 0.8s ease;" />
                             <!-- Central Score Text -->
                             <text x="60" y="68" fill="#333" font-size="28" font-weight="bold" text-anchor="middle">
                                 {$scoreRecord.score}

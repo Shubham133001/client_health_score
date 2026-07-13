@@ -116,7 +116,6 @@ class Controller
         if (!isset($this->profileRulesCache[$profileId])) {
             $this->profileRulesCache[$profileId] = Capsule::table('mod_chs_profile_rules')
                 ->where('profile_id', $profileId)
-                ->where('is_enabled', 1)
                 ->get()
                 ->map(function ($item) {
                     return (array)$item;
@@ -210,6 +209,16 @@ class Controller
                     }
                 }
 
+                $rulesFromDb = $this->getRulesForProfile($profileId);
+                $dbWeights = [];
+                $enabledSignals = [];
+                foreach ($rulesFromDb as $r) {
+                    $dbWeights[$r['metric_key']] = (float)$r['weight'];
+                    if ($r['is_enabled']) {
+                        $enabledSignals[$r['metric_key']] = true;
+                    }
+                }
+
                 $rawSignals = [
                     'avg_days_late'             => (float)$metrics['avg_days_late'],
                     'failed_payment_attempts'   => (int)$metrics['failed_payment_attempts'],
@@ -221,13 +230,13 @@ class Controller
                 ];
 
                 $availableSignals = [
-                    'avg_days_late'             => true,
-                    'failed_payment_attempts'   => true,
-                    'overdue_invoice_count'     => true,
-                    'login_recency_days'        => true,
-                    'login_count_90_days'       => true,
-                    'downgrade_count_12_months' => true,
-                    'usage_trend'               => ($metrics['usage_trend'] !== null),
+                    'avg_days_late'             => (bool)($enabledSignals['avg_days_late'] ?? true),
+                    'failed_payment_attempts'   => (bool)($enabledSignals['failed_payment_attempts'] ?? true),
+                    'overdue_invoice_count'     => (bool)($enabledSignals['overdue_invoice_count'] ?? true),
+                    'login_recency_days'        => (bool)($enabledSignals['login_recency_days'] ?? true),
+                    'login_count_90_days'       => (bool)($enabledSignals['login_count_90_days'] ?? true),
+                    'downgrade_count_12_months' => (bool)($enabledSignals['downgrade_count_12_months'] ?? true),
+                    'usage_trend'               => ($metrics['usage_trend'] !== null) && (bool)($enabledSignals['usage_trend'] ?? true),
                 ];
 
                 // Resolve sub-factor scores
@@ -244,15 +253,15 @@ class Controller
 
                 // Default weights
                 $defaultPaymentWeights = [
-                    'avg_days_late'           => 40.0,
-                    'failed_payment_attempts' => 30.0,
-                    'overdue_invoice_count'   => 30.0,
+                    'avg_days_late'           => $dbWeights['avg_days_late'] ?? (isset($dbWeights['avg_days_late']) ? 0.0 : 40.0),
+                    'failed_payment_attempts' => $dbWeights['failed_payment_attempts'] ?? (isset($dbWeights['failed_payment_attempts']) ? 0.0 : 30.0),
+                    'overdue_invoice_count'   => $dbWeights['overdue_invoice_count'] ?? (isset($dbWeights['overdue_invoice_count']) ? 0.0 : 30.0),
                 ];
                 $defaultEngagementWeights = [
-                    'login_recency_days'        => 35.0,
-                    'login_count_90_days'       => 25.0,
-                    'downgrade_count_12_months' => 20.0,
-                    'usage_trend'               => 20.0,
+                    'login_recency_days'        => $dbWeights['login_recency_days'] ?? (isset($dbWeights['login_recency_days']) ? 0.0 : 35.0),
+                    'login_count_90_days'       => $dbWeights['login_count_90_days'] ?? (isset($dbWeights['login_count_90_days']) ? 0.0 : 25.0),
+                    'downgrade_count_12_months' => $dbWeights['downgrade_count_12_months'] ?? (isset($dbWeights['downgrade_count_12_months']) ? 0.0 : 20.0),
+                    'usage_trend'               => $dbWeights['usage_trend'] ?? (isset($dbWeights['usage_trend']) ? 0.0 : 20.0),
                 ];
 
                 $normalizedPaymentWeights = WeightResolver::normalizeAvailableWeights($defaultPaymentWeights, $availableSignals);
@@ -362,14 +371,18 @@ class Controller
                     ->orderBy('date', 'desc')
                     ->first();
 
-                if (!$prevScoreRecord) {
-                    $prevScoreRecord = Capsule::table('mod_chs_snapshots')
-                        ->where('client_id', $clientId)
-                        ->orderBy('date', 'asc')
-                        ->first();
+                $existingScore = Capsule::table('mod_chs_scores')
+                    ->where('client_id', $clientId)
+                    ->value('score');
+
+                if ($prevScoreRecord) {
+                    $prevScore = (int)$prevScoreRecord->score;
+                } elseif ($existingScore !== null) {
+                    $prevScore = (int)$existingScore;
+                } else {
+                    $prevScore = $finalScore;
                 }
 
-                $prevScore = $prevScoreRecord ? (int)$prevScoreRecord->score : $finalScore;
                 $delta = $finalScore - $prevScore;
 
                 if ($delta >= 5) {
@@ -541,7 +554,7 @@ class Controller
      * @param string $statusFilter
      * @return array
      */
-    public function getScores(int $page, int $limit, string $search = '', string $statusFilter = '', string $sort = '', string $dir = ''): array
+    public function getScores(int $page, int $limit, string $search = '', string $statusFilter = '', string $sort = '', string $dir = '', int $groupId = 0, int $profileId = 0): array
     {
         $offset = ($page - 1) * $limit;
 
@@ -569,6 +582,70 @@ class Controller
                     ->orWhere('tblclients.companyname', 'like', "%{$search}%")
                     ->orWhere('tblclients.email', 'like', "%{$search}%")
                     ->orWhere('tblclients.id', '=', $search);
+            });
+        }
+
+        if ($groupId > 0) {
+            $query->where('tblclients.groupid', $groupId);
+        }
+
+        if ($profileId > 0) {
+            $query->where(function ($q) use ($profileId) {
+                // 1. Client-specific assignment matches profileId
+                $q->whereIn('tblclients.id', function ($sub) use ($profileId) {
+                    $sub->select('client_id')->from('mod_chs_profile_assignments')
+                        ->whereNotNull('client_id')
+                        ->where('profile_id', $profileId);
+                })
+                // 2. Or Client Group assignment matches profileId (and client has no client-specific assignment)
+                ->orWhere(function ($q2) use ($profileId) {
+                    $q2->whereIn('tblclients.groupid', function ($sub) use ($profileId) {
+                        $sub->select('group_id')->from('mod_chs_profile_assignments')
+                            ->whereNotNull('group_id')
+                            ->where('profile_id', $profileId);
+                    })
+                    ->whereNotIn('tblclients.id', function ($sub) {
+                        $sub->select('client_id')->from('mod_chs_profile_assignments')->whereNotNull('client_id');
+                    });
+                })
+                // 3. Or Product-specific assignment matches profileId (and client has no client-specific or group assignment)
+                ->orWhere(function ($q3) use ($profileId) {
+                    $q3->whereIn('tblclients.id', function ($sub) use ($profileId) {
+                        $sub->select('userid')->from('tblhosting')
+                            ->where('domainstatus', 'Active')
+                            ->whereIn('packageid', function ($sub2) use ($profileId) {
+                                $sub2->select('product_id')->from('mod_chs_profile_assignments')
+                                    ->whereNotNull('product_id')
+                                    ->where('profile_id', $profileId);
+                            });
+                    })
+                    ->whereNotIn('tblclients.id', function ($sub) {
+                        $sub->select('client_id')->from('mod_chs_profile_assignments')->whereNotNull('client_id');
+                    })
+                    ->whereNotIn('tblclients.groupid', function ($sub) {
+                        $sub->select('group_id')->from('mod_chs_profile_assignments')->whereNotNull('group_id');
+                    });
+                });
+
+                // 4. Or default profile matches profileId (and client has none of the above)
+                $defaultProfileId = Capsule::table('mod_chs_profiles')->where('is_default', 1)->value('id') ?: 1;
+                if ($profileId == $defaultProfileId) {
+                    $q->orWhere(function ($q4) {
+                        $q4->whereNotIn('tblclients.id', function ($sub) {
+                            $sub->select('client_id')->from('mod_chs_profile_assignments')->whereNotNull('client_id');
+                        })
+                        ->whereNotIn('tblclients.groupid', function ($sub) {
+                            $sub->select('group_id')->from('mod_chs_profile_assignments')->whereNotNull('group_id');
+                        })
+                        ->whereNotIn('tblclients.id', function ($sub) {
+                            $sub->select('userid')->from('tblhosting')
+                                ->where('domainstatus', 'Active')
+                                ->whereIn('packageid', function ($sub2) {
+                                    $sub2->select('product_id')->from('mod_chs_profile_assignments')->whereNotNull('product_id');
+                                });
+                        });
+                    });
+                }
             });
         }
 
@@ -641,10 +718,28 @@ class Controller
             ->get()
             ->toArray();
 
-        $items = array_map(function ($item) {
+        $tiers = Capsule::table('mod_chs_tiers')
+            ->orderBy('min_score', 'desc')
+            ->get()
+            ->toArray();
+
+        $items = array_map(function ($item) use ($tiers) {
             $arr = (array)$item;
             if ($arr['breakdown']) {
                 $arr['breakdown'] = json_decode($arr['breakdown'], true);
+            }
+            
+            // Resolve tier name and color
+            $arr['tier_name'] = 'Unevaluated';
+            $arr['tier_color'] = '#6b7280';
+            if ($arr['score'] !== null) {
+                foreach ($tiers as $t) {
+                    if ($arr['score'] >= $t->min_score && $arr['score'] <= $t->max_score) {
+                        $arr['tier_name'] = $t->name;
+                        $arr['tier_color'] = $t->badge_color;
+                        break;
+                    }
+                }
             }
             return $arr;
         }, $records);
@@ -669,8 +764,8 @@ class Controller
         $stats = Capsule::table('mod_chs_scores')
             ->selectRaw('
                 COUNT(CASE WHEN score >= 80 THEN 1 END) as healthy,
-                COUNT(CASE WHEN score >= 50 AND score < 80 THEN 1 END) as warning,
-                COUNT(CASE WHEN score < 50 THEN 1 END) as critical,
+                COUNT(CASE WHEN score >= 60 AND score < 80 THEN 1 END) as warning,
+                COUNT(CASE WHEN score < 60 THEN 1 END) as critical,
                 AVG(score) as average
             ')
             ->first();
@@ -1019,19 +1114,8 @@ class Controller
      */
     public function processAlertsForClient(int $clientId, int $score, int $prevScore)
     {
-        $alertThreshold = (int)$this->getSetting('alert_threshold', 50);
-
-        if ($score < $alertThreshold && $prevScore >= $alertThreshold) {
-            $type = 'critical_health_drop';
-            $message = "Client health score dropped to {$score} (previously {$prevScore}).";
-            $severity = 'danger';
-            $this->triggerAlert($clientId, $type, $message, $severity);
-        } elseif ($score >= $alertThreshold && $prevScore < $alertThreshold) {
-            $type = 'health_recovery';
-            $message = "Client health score recovered to {$score} (previously {$prevScore}).";
-            $severity = 'info';
-            $this->triggerAlert($clientId, $type, $message, $severity);
-        }
+        $alertService = new \WHMCS\Module\Addon\ClientHealthScore\AlertService();
+        $alertService->checkAndSendAlerts($clientId, $score, $prevScore);
     }
 
     /**
@@ -1346,7 +1430,7 @@ class Controller
                    (SELECT COALESCE(SUM(recurringamount / registrationperiod), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
                 FROM tblclients c
                 JOIN mod_chs_scores s ON c.id = s.client_id
-                WHERE s.score >= 30 AND s.score < 50 AND c.status = 'Active'
+                WHERE s.score >= 35 AND s.score < 60 AND c.status = 'Active'
                 ORDER BY mrr DESC, s.score ASC
                 LIMIT 5
             ");
@@ -1366,7 +1450,7 @@ class Controller
                    (SELECT COALESCE(SUM(recurringamount / registrationperiod), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
                 FROM tblclients c
                 JOIN mod_chs_scores s ON c.id = s.client_id
-                WHERE s.score < 30 AND c.status = 'Active'
+                WHERE s.score < 35 AND c.status = 'Active'
                 ORDER BY mrr DESC, s.score ASC
                 LIMIT 5
             ");
@@ -1392,13 +1476,13 @@ class Controller
             $body .= "  <li>Average Health Score: <strong>" . ($stats['average_score'] ?? 'N/A') . "/100</strong></li>";
             $body .= "  <li>Total Evaluated Clients: <strong>" . $stats['total_clients'] . "</strong></li>";
             $body .= "  <li>Healthy Clients (score >= 80): <strong style='color:#10b981;'>" . $stats['healthy'] . "</strong></li>";
-            $body .= "  <li>Watch / Warning Clients (score 50-79): <strong style='color:#f59e0b;'>" . $stats['warning'] . "</strong></li>";
-            $body .= "  <li>At-Risk / Critical Clients (score < 50): <strong style='color:#ef4444;'>" . $stats['critical'] . "</strong></li>";
+            $body .= "  <li>Watch / Warning Clients (score 60-79): <strong style='color:#f59e0b;'>" . $stats['warning'] . "</strong></li>";
+            $body .= "  <li>At-Risk / Critical Clients (score < 60): <strong style='color:#ef4444;'>" . $stats['critical'] . "</strong></li>";
             $body .= "  <li>Newly Downgraded this week: <strong>{$downgrades}</strong></li>";
             $body .= "  <li>Newly Improved this week: <strong>{$upgrades}</strong></li>";
             $body .= "</ul>";
 
-            $body .= "<h3>Top Critical Clients by MRR (Score &lt; 30)</h3>";
+            $body .= "<h3>Top Critical Clients by MRR (Score &lt; 35)</h3>";
             if (empty($criticalList)) {
                 $body .= "<p style='color:#10b981;'>No critical clients found.</p>";
             } else {
@@ -1412,7 +1496,7 @@ class Controller
                 $body .= "</table>";
             }
 
-            $body .= "<h3>Top At-Risk Clients by MRR (Score 30-49)</h3>";
+            $body .= "<h3>Top At-Risk Clients by MRR (Score 35-59)</h3>";
             if (empty($atRiskList)) {
                 $body .= "<p style='color:#10b981;'>No at-risk clients found.</p>";
             } else {

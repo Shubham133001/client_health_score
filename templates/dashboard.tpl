@@ -78,28 +78,23 @@
             {assign var="totalDist" value=$stats.total_clients|default:1}
             <div class="progress" style="height: 24px; margin-bottom: 0;">
                 {if $stats.tiers_dist.platinum}
-                <div class="progress-bar" style="background-color: #4f46e5; width: {($stats.tiers_dist.platinum / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Platinum">
-                    Platinum VIP ({$stats.tiers_dist.platinum})
+                <div class="progress-bar" style="background-color: #10b981; width: {($stats.tiers_dist.platinum / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Healthy">
+                    Healthy ({$stats.tiers_dist.platinum})
                 </div>
                 {/if}
                 {if $stats.tiers_dist.gold}
-                <div class="progress-bar progress-bar-warning" style="background-color: #eab308; width: {($stats.tiers_dist.gold / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Gold">
-                    Gold ({$stats.tiers_dist.gold})
+                <div class="progress-bar" style="background-color: #f59e0b; width: {($stats.tiers_dist.gold / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Watch">
+                    Watch ({$stats.tiers_dist.gold})
                 </div>
                 {/if}
                 {if $stats.tiers_dist.silver}
-                <div class="progress-bar" style="background-color: #94a3b8; width: {($stats.tiers_dist.silver / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Silver">
-                    Silver ({$stats.tiers_dist.silver})
-                </div>
-                {/if}
-                {if $stats.tiers_dist.bronze}
-                <div class="progress-bar" style="background-color: #b45309; width: {($stats.tiers_dist.bronze / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Bronze">
-                    Bronze ({$stats.tiers_dist.bronze})
+                <div class="progress-bar" style="background-color: #f0ad4e; width: {($stats.tiers_dist.silver / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="At-Risk">
+                    At-Risk ({$stats.tiers_dist.silver})
                 </div>
                 {/if}
                 {if $stats.tiers_dist.standard}
-                <div class="progress-bar" style="background-color: #6b7280; width: {($stats.tiers_dist.standard / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Standard">
-                    Standard ({$stats.tiers_dist.standard})
+                <div class="progress-bar" style="background-color: #ef4444; width: {($stats.tiers_dist.standard / $totalDist) * 100}%; line-height: 24px; font-weight: bold;" title="Critical">
+                    Critical ({$stats.tiers_dist.standard})
                 </div>
                 {/if}
             </div>
@@ -185,21 +180,37 @@
                 <input type="hidden" name="module" value="client_health_score" />
                 <div class="form-group" style="margin-right: 10px;">
                     <label for="search" class="sr-only">Search</label>
-                    <input type="text" name="search" id="search" class="form-control input-sm" placeholder="Client ID, name, email..." value="{$search}" style="width: 220px;" />
+                    <input type="text" name="search" id="search" class="form-control input-sm" placeholder="Client ID, name, email..." value="{$search}" style="width: 200px;" />
                 </div>
                 <div class="form-group" style="margin-right: 10px;">
                     <label for="status" class="sr-only">Health Status</label>
                     <select name="status" id="status" class="form-control input-sm">
                         <option value="">All Health Statuses</option>
                         <option value="healthy" {if $statusFilter == 'healthy'}selected{/if}>Healthy (>= 80)</option>
-                        <option value="warning" {if $statusFilter == 'warning'}selected{/if}>Warning (50-79)</option>
-                        <option value="critical" {if $statusFilter == 'critical'}selected{/if}>Critical Churn (< 50)</option>
+                        <option value="warning" {if $statusFilter == 'warning'}selected{/if}>Watch (60-79)</option>
+                        <option value="critical" {if $statusFilter == 'critical'}selected{/if}>Critical Churn (< 60)</option>
                         <option value="unevaluated" {if $statusFilter == 'unevaluated'}selected{/if}>Unevaluated</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-right: 10px;">
+                    <select name="group_id" class="form-control input-sm">
+                        <option value="">All Client Groups</option>
+                        {foreach $clientGroups as $group}
+                            <option value="{$group.id}" {if $groupIdFilter == $group.id}selected{/if}>{$group.groupname}</option>
+                        {/foreach}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-right: 10px;">
+                    <select name="profile_id" class="form-control input-sm">
+                        <option value="">All Scoring Profiles</option>
+                        {foreach $scoringProfiles as $prof}
+                            <option value="{$prof.id}" {if $profileIdFilter == $prof.id}selected{/if}>{$prof.name}</option>
+                        {/foreach}
                     </select>
                 </div>
                 <button type="submit" class="btn btn-default btn-sm"><i class="fa fa-filter"></i> Apply Filters</button>
                 <a href="{$moduleLink}" class="btn btn-link btn-sm" style="color: #666; font-size: 12px;">Reset Filters</a>
-                <a href="{$moduleLink}&action=export_csv&search={$search}&status={$statusFilter}" class="btn btn-success btn-sm pull-right" style="font-weight: bold;"><i class="fa fa-download"></i> Export CSV</a>
+                <a href="{$moduleLink}&action=export_csv&search={$search}&status={$statusFilter}&group_id={$groupIdFilter}&profile_id={$profileIdFilter}" class="btn btn-success btn-sm pull-right" style="font-weight: bold;"><i class="fa fa-download"></i> Export CSV</a>
             </form>
         </div>
 
@@ -223,11 +234,14 @@
                         <td><strong>{$client.firstname} {$client.lastname}</strong></td>
                         <td>{$client.companyname|default:'-'}</td>
                         <td><a href="mailto:{$client.email}">{$client.email}</a></td>
-                        <td class="text-center">
+                        <td class="text-center" style="vertical-align: middle;">
                             {if $client.score !== null}
-                                <span class="badge" style="background-color: {if $client.score >= 80}#10b981{elseif $client.score >= 50}#f59e0b{else}#ef4444{/if}; font-size: 12px; padding: 4px 8px;">
+                                <span class="badge" style="background-color: {$client.tier_color|default:'#6b7280'}; font-weight: bold; padding: 4px 8px; font-size: 12px; display: inline-block;" title="{$client.tier_name}">
                                     {$client.score}
                                 </span>
+                                <div style="font-size: 10px; font-weight: bold; color: {$client.tier_color|default:'#6b7280'}; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    {$client.tier_name}
+                                </div>
                             {else}
                                 <span class="text-muted" style="font-size: 11px;">Unevaluated</span>
                             {/if}
