@@ -760,6 +760,22 @@ class Controller
             }
         }
 
+        // Synchronize default profile settings JSON
+        $profile = Capsule::table('mod_chs_profiles')->where('id', 1)->first();
+        if ($profile) {
+            $profileSettings = json_decode($profile->settings, true) ?: [];
+            $profileSettings['payment_weight'] = (float)($postedSettings['payment_weight'] ?? $profileSettings['payment_weight'] ?? 50.0);
+            $profileSettings['engagement_weight'] = (float)($postedSettings['engagement_weight'] ?? $profileSettings['engagement_weight'] ?? 50.0);
+            $profileSettings['trend_lookback_days'] = (int)($postedSettings['trend_lookback_days'] ?? $profileSettings['trend_lookback_days'] ?? 14);
+
+            Capsule::table('mod_chs_profiles')
+                ->where('id', 1)
+                ->update([
+                    'settings' => json_encode($profileSettings),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+        }
+
         return "Settings configuration updated successfully.";
     }
 

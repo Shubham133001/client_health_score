@@ -24,8 +24,26 @@ class AlertService
     /**
      * Compare scores and trigger alerts if needed.
      */
-    public function checkAndSendAlerts(int $clientId, int $score, int $prevScore)
+    public function checkAndSendAlerts(int $clientId, $currentResult, $previousResult = null)
     {
+        $score = 100;
+        if (is_array($currentResult)) {
+            $score = (int)($currentResult['display_score'] ?? $currentResult['score'] ?? 100);
+        } else {
+            $score = (int)$currentResult;
+        }
+
+        $prevScore = 100;
+        if (is_array($previousResult)) {
+            $prevScore = (int)($previousResult['display_score'] ?? $previousResult['score'] ?? 100);
+        } elseif ($previousResult !== null) {
+            $prevScore = (int)$previousResult;
+        } else {
+            $prevScore = (int)Capsule::table('mod_chs_scores')
+                ->where('client_id', $clientId)
+                ->value('score') ?? $score;
+        }
+
         $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
         $profileId = $clientController->resolveProfileIdForClient($clientId);
 
@@ -266,7 +284,31 @@ class AlertService
             'teams' => [
                 'setting' => 'webhook_teams_url',
                 'body' => json_encode([
-                    'text' => "⚠️ **[Client Health Score Alert]**\n**Client:** {$payload['client_name']} (ID: {$clientId})\n**Score:** {$payload['previous_score']} ➔ {$payload['current_score']} (Delta: " . ($payload['delta'] > 0 ? "+{$payload['delta']}" : $payload['delta']) . ")\n**Tier:** {$payload['previous_tier']} ➔ {$payload['current_tier']}\n**MRR:** $" . number_format($payload['mrr'], 2) . "\n**Risk Drivers:** " . (empty($driverNames) ? 'None' : implode(', ', $driverNames)) . "\n**Message:** {$message}"
+                    'text' => "⚠️ **[Client Health Score Alert]**\n**Client:** {$payload['client_name']} (ID: {$clientId})\n**Score:** {$payload['previous_score']} ➔ {$payload['current_score']} (Delta: " . ($payload['delta'] > 0 ? "+{$payload['delta']}" : $payload['delta']) . ")\n**Tier:** {$payload['previous_tier']} ➔ {$payload['current_tier']}\n**MRR:** $" . number_format($payload['mrr'], 2) . "\n**Risk Drivers:** " . (empty($driverNames) ? 'None' : implode(', ', $driverNames)) . "\n**Message:** {$message}",
+                    'type' => 'message',
+                    'attachments' => [
+                        [
+                            'contentType' => 'application/vnd.microsoft.card.adaptive',
+                            'content' => [
+                                'type' => 'AdaptiveCard',
+                                'version' => '1.2',
+                                'body' => [
+                                    [
+                                        'type' => 'TextBlock',
+                                        'text' => "⚠️ **[Client Health Score Alert]**",
+                                        'weight' => 'bolder',
+                                        'size' => 'medium'
+                                    ],
+                                    [
+                                        'type' => 'TextBlock',
+                                        'text' => "**Client:** {$payload['client_name']} (ID: {$clientId})\n\n**Score:** {$payload['previous_score']} ➔ {$payload['current_score']} (Delta: " . ($payload['delta'] > 0 ? "+{$payload['delta']}" : $payload['delta']) . ")\n\n**Tier:** {$payload['previous_tier']} ➔ {$payload['current_tier']}\n\n**MRR:** $" . number_format($payload['mrr'], 2) . "\n\n**Risk Drivers:** " . (empty($driverNames) ? 'None' : implode(', ', $driverNames)) . "\n\n**Message:** {$message}",
+                                        'wrap' => true
+                                    ]
+                                ],
+                                '$schema' => 'http://adaptivecards.io/schemas/adaptive-card.json'
+                            ]
+                        ]
+                    ]
                 ]),
                 'headers' => ['Content-Type: application/json']
             ],
@@ -294,7 +336,6 @@ class AlertService
             $responseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $err = curl_error($ch);
             curl_close($ch);
-
             $status = ($responseCode >= 200 && $responseCode < 300) ? 'success' : 'failed';
             if ($err) {
                 $responseBody = $err;
@@ -321,5 +362,215 @@ class AlertService
                 'created_at'    => date('Y-m-d H:i:s'),
             ]);
         }
+    }
+
+    /**
+     * Send Weekly Digest Report immediately.
+     */
+    public function sendWeeklyDigest()
+    {
+        $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
+        
+        $stats = $clientController->getStats();
+
+        $downgrades = Capsule::table('mod_chs_scores')
+            ->whereRaw('score < prev_score')
+            ->count();
+
+        $upgrades = Capsule::table('mod_chs_scores')
+            ->whereRaw('score > prev_score')
+            ->count();
+
+        $biggestDrops = Capsule::table('tblclients')
+            ->join('mod_chs_scores', 'tblclients.id', '=', 'mod_chs_scores.client_id')
+            ->select([
+                'tblclients.id',
+                'tblclients.firstname',
+                'tblclients.lastname',
+                'tblclients.companyname',
+                'mod_chs_scores.score',
+                'mod_chs_scores.prev_score',
+                Capsule::raw('(mod_chs_scores.prev_score - mod_chs_scores.score) as delta')
+            ])
+            ->whereRaw('mod_chs_scores.score < mod_chs_scores.prev_score')
+            ->orderBy('delta', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function($item) { return (array)$item; })
+            ->toArray();
+
+        $biggestImprovements = Capsule::table('tblclients')
+            ->join('mod_chs_scores', 'tblclients.id', '=', 'mod_chs_scores.client_id')
+            ->select([
+                'tblclients.id',
+                'tblclients.firstname',
+                'tblclients.lastname',
+                'tblclients.companyname',
+                'mod_chs_scores.score',
+                'mod_chs_scores.prev_score',
+                Capsule::raw('(mod_chs_scores.score - mod_chs_scores.prev_score) as delta')
+            ])
+            ->whereRaw('mod_chs_scores.score > mod_chs_scores.prev_score')
+            ->orderBy('delta', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function($item) { return (array)$item; })
+            ->toArray();
+
+        $atRisk = Capsule::select("
+            SELECT c.id, c.firstname, c.lastname, c.companyname, s.score,
+               ((SELECT COALESCE(SUM(
+                  CASE WHEN billingcycle = 'Monthly' THEN amount
+                       WHEN billingcycle = 'Quarterly' THEN amount / 3
+                       WHEN billingcycle = 'Semi-Annually' THEN amount / 6
+                       WHEN billingcycle = 'Annually' THEN amount / 12
+                       WHEN billingcycle = 'Biennially' THEN amount / 24
+                       WHEN billingcycle = 'Triennially' THEN amount / 36
+                       ELSE 0 END
+                ), 0) FROM tblhosting WHERE userid = c.id AND domainstatus = 'Active') +
+               (SELECT COALESCE(SUM(recurringamount / registrationperiod / 12), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
+            FROM tblclients c
+            JOIN mod_chs_scores s ON c.id = s.client_id
+            WHERE s.score >= 35 AND s.score < 60 AND c.status = 'Active'
+            ORDER BY mrr DESC, s.score ASC
+            LIMIT 5
+        ");
+        $atRiskList = array_map(function($item) { return (array)$item; }, $atRisk);
+
+        $critical = Capsule::select("
+            SELECT c.id, c.firstname, c.lastname, c.companyname, s.score,
+               ((SELECT COALESCE(SUM(
+                  CASE WHEN billingcycle = 'Monthly' THEN amount
+                       WHEN billingcycle = 'Quarterly' THEN amount / 3
+                       WHEN billingcycle = 'Semi-Annually' THEN amount / 6
+                       WHEN billingcycle = 'Annually' THEN amount / 12
+                       WHEN billingcycle = 'Biennially' THEN amount / 24
+                       WHEN billingcycle = 'Triennially' THEN amount / 36
+                       ELSE 0 END
+                ), 0) FROM tblhosting WHERE userid = c.id AND domainstatus = 'Active') +
+               (SELECT COALESCE(SUM(recurringamount / registrationperiod / 12), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
+            FROM tblclients c
+            JOIN mod_chs_scores s ON c.id = s.client_id
+            WHERE s.score < 35 AND c.status = 'Active'
+            ORDER BY mrr DESC, s.score ASC
+            LIMIT 5
+        ");
+        $criticalList = array_map(function($item) { return (array)$item; }, $critical);
+
+        $adminEmail = $this->getSetting('digest_recipients');
+        if (empty($adminEmail)) {
+            $adminEmail = Capsule::table('tblconfiguration')->where('setting', 'Email')->value('value');
+        }
+
+        if (empty($adminEmail)) {
+            throw new \Exception("No admin recipient email configured.");
+        }
+
+        $subject = "WHMCS Client Health Weekly Digest - " . date('Y-m-d');
+        
+        $body = "<div style='font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;'>";
+        $body .= "<h2>Client Health Weekly Digest Report</h2>";
+        $body .= "<p>Here is your weekly summary of client health scores, trend changes, and potential churn risks.</p>";
+        
+        $body .= "<h3>General Statistics</h3>";
+        $body .= "<ul>";
+        $body .= "  <li>Average Health Score: <strong>" . ($stats['average_score'] ?? 'N/A') . "/100</strong></li>";
+        $body .= "  <li>Total Evaluated Clients: <strong>" . $stats['total_clients'] . "</strong></li>";
+        $body .= "  <li>Healthy Clients (score >= 80): <strong style='color:#10b981;'>" . $stats['healthy'] . "</strong></li>";
+        $body .= "  <li>Watch / Warning Clients (score 60-79): <strong style='color:#f59e0b;'>" . $stats['warning'] . "</strong></li>";
+        $body .= "  <li>At-Risk / Critical Clients (score < 60): <strong style='color:#ef4444;'>" . $stats['critical'] . "</strong></li>";
+        $body .= "  <li>Newly Downgraded this week: <strong>{$downgrades}</strong></li>";
+        $body .= "  <li>Newly Improved this week: <strong>{$upgrades}</strong></li>";
+        $body .= "</ul>";
+
+        $body .= "<h3>Top Critical Clients by MRR (Score &lt; 35)</h3>";
+        if (empty($criticalList)) {
+            $body .= "<p style='color:#10b981;'>No critical clients found.</p>";
+        } else {
+            $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
+            $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Health Score</th><th>MRR</th></tr>";
+            foreach ($criticalList as $c) {
+                $name = $c['firstname'] . ' ' . $c['lastname'];
+                if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
+                $body .= "  <tr><td><strong>" . htmlspecialchars($name) . "</strong></td><td align='center'>" . $c['score'] . "</td><td align='right'>$" . number_format($c['mrr'], 2) . "</td></tr>";
+            }
+            $body .= "</table>";
+        }
+
+        $body .= "<h3>Top At-Risk Clients by MRR (Score 35-59)</h3>";
+        if (empty($atRiskList)) {
+            $body .= "<p style='color:#10b981;'>No at-risk clients found.</p>";
+        } else {
+            $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
+            $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Health Score</th><th>MRR</th></tr>";
+            foreach ($atRiskList as $c) {
+                $name = $c['firstname'] . ' ' . $c['lastname'];
+                if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
+                $body .= "  <tr><td><strong>" . htmlspecialchars($name) . "</strong></td><td align='center'>" . $c['score'] . "</td><td align='right'>$" . number_format($c['mrr'], 2) . "</td></tr>";
+            }
+            $body .= "</table>";
+        }
+
+        $body .= "<h3>Biggest Score Drops</h3>";
+        if (empty($biggestDrops)) {
+            $body .= "<p>No client score drops recorded.</p>";
+        } else {
+            $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
+            $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Previous Score</th><th>Current Score</th><th>Drop</th></tr>";
+            foreach ($biggestDrops as $c) {
+                $name = $c['firstname'] . ' ' . $c['lastname'];
+                if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
+                $body .= "  <tr><td>" . htmlspecialchars($name) . "</td><td align='center'>{$c['prev_score']}</td><td align='center'>{$c['score']}</td><td align='center' style='color:#ef4444; font-weight:bold;'>-{$c['delta']}</td></tr>";
+            }
+            $body .= "</table>";
+        }
+
+        $body .= "<h3>Biggest Score Improvements</h3>";
+        if (empty($biggestImprovements)) {
+            $body .= "<p>No client score improvements recorded.</p>";
+        } else {
+            $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
+            $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Previous Score</th><th>Current Score</th><th>Improvement</th></tr>";
+            foreach ($biggestImprovements as $c) {
+                $name = $c['firstname'] . ' ' . $c['lastname'];
+                if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
+                $body .= "  <tr><td>" . htmlspecialchars($name) . "</td><td align='center'>{$c['prev_score']}</td><td align='center'>{$c['score']}</td><td align='center' style='color:#10b981; font-weight:bold;'>+{$c['delta']}</td></tr>";
+            }
+            $body .= "</table>";
+        }
+
+        $body .= "<p style='font-size:11px; color:#666; margin-top:20px;'>Generated by WHMCS Client Health Score Addon.</p>";
+        $body .= "</div>";
+
+        $emails = array_map('trim', explode(',', $adminEmail));
+        $success = true;
+        foreach ($emails as $email) {
+            if (empty($email)) {
+                continue;
+            }
+            $apiResult = localAPI('SendAdminEmail', [
+                'customsubject' => $subject,
+                'custommessage' => $body,
+                'mergefields'   => [],
+                'email'         => $email
+            ]);
+            if ($apiResult['result'] !== 'success') {
+                $success = false;
+                Capsule::table('mod_chs_audit_logs')->insert([
+                    'action'       => 'weekly_digest_failure',
+                    'level'        => 'error',
+                    'description'  => "Failed to send weekly digest email to {$email}. API Response: " . json_encode($apiResult),
+                    'performed_by' => 'system',
+                    'created_at'   => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
+
+        Capsule::table('mod_chs_weekly_digest_logs')->insert([
+            'sent_at'    => date('Y-m-d H:i:s'),
+            'recipients' => $adminEmail,
+            'stats'      => json_encode($stats),
+            'status'     => $success ? 'success' : 'failed',
+        ]);
     }
 }

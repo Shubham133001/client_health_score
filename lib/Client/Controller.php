@@ -135,6 +135,25 @@ class Controller
         if ($profile && !empty($profile->settings)) {
             $settings = json_decode($profile->settings, true) ?: [];
         }
+
+        // Merge general settings overrides for the default profile
+        if ($profileId === 1 || ($profile && $profile->is_default)) {
+            $generalSettings = [
+                'payment_weight' => 'payment_weight',
+                'engagement_weight' => 'engagement_weight',
+                'trend_lookback_days' => 'trend_lookback_days',
+            ];
+            foreach ($generalSettings as $field => $dbKey) {
+                $dbVal = Capsule::table('mod_chs_settings')->where('key', $dbKey)->value('value');
+                if ($dbVal !== null) {
+                    if ($field === 'trend_lookback_days') {
+                        $settings[$field] = (int)$dbVal;
+                    } else {
+                        $settings[$field] = (float)$dbVal;
+                    }
+                }
+            }
+        }
         return $settings;
     }
 
@@ -153,39 +172,34 @@ class Controller
             return [];
         }
 
-        // Resolve profile IDs
-        $clientProfiles = [];
-        foreach ($clientIds as $clientId) {
-            $clientProfiles[$clientId] = $this->resolveProfileIdForClient($clientId);
-        }
-
-        // Fetch metrics batch using maximum lookback days
-        $metricsBatch = $this->getClientMetricsBatch($clientIds, 90);
         $results = [];
 
         foreach ($clientIds as $clientId) {
             try {
-                $metrics = $metricsBatch[$clientId] ?? [
-                    'client_id'                  => $clientId,
-                    'datecreated'                => '',
-                    'lastlogin'                  => '',
-                    'avg_days_late'              => 0.0,
-                    'failed_payment_attempts'    => 0,
-                    'overdue_invoice_count'      => 0,
-                    'refund_or_chargeback_count' => 0,
-                    'login_count_90_days'        => 0,
-                    'downgrade_count_12_months'  => 0,
-                    'usage_trend'                => null,
-                ];
-
-                $profileId = $clientProfiles[$clientId];
+                $profileId = $this->resolveProfileIdForClient($clientId);
                 $profileSettings = $this->getProfileSettings($profileId);
 
-                // Determine if New Account Dampening is applicable
+                // 1. Fetch rules for the profile
+                $rulesFromDb = $this->getRulesForProfile($profileId);
+                $dbWeights = [];
+                $enabledSignals = [];
+                foreach ($rulesFromDb as $r) {
+                    $dbWeights[$r['metric_key']] = (float)$r['weight'];
+                    if ($r['is_enabled']) {
+                        $enabledSignals[$r['metric_key']] = true;
+                    }
+                }
+
+                // 2. Collect raw signals
+                $collector = new \WHMCS\Module\Addon\ClientHealthScore\ClientSignalCollector();
+                $collected = $collector->collect($clientId, $enabledSignals);
+                $metadata = $collected['metadata'];
+
+                // 3. Determine if New Account Dampening is applicable
                 $isNewAccount = false;
                 $dampeningEnabled = (bool)($profileSettings['dampening_enabled'] ?? true);
                 if ($dampeningEnabled) {
-                    $signupDate = $metrics['datecreated'] ?? '';
+                    $signupDate = $metadata['datecreated'] ?? '';
                     if ($signupDate) {
                         $signupTs = strtotime($signupDate);
                         if ($signupTs > 0) {
@@ -197,137 +211,58 @@ class Controller
                         }
                     }
                 }
-
                 $dampMultiplier = (float)($profileSettings['dampening_multiplier'] ?? 1.5);
 
-                // Calculate days since last login
-                $loginRecencyDays = 999;
-                if (!empty($metrics['lastlogin'])) {
-                    $loginRecencyDays = (int)floor((time() - strtotime($metrics['lastlogin'])) / 86400);
-                    if ($loginRecencyDays < 0) {
-                        $loginRecencyDays = 0;
-                    }
+                // 4. Run Calculation via HealthScoreCalculator
+                $calcResult = \WHMCS\Module\Addon\ClientHealthScore\HealthScoreCalculator::calculate(
+                    $clientId,
+                    $collected,
+                    $dbWeights,
+                    $profileSettings,
+                    $isNewAccount,
+                    $dampMultiplier
+                );
+
+                $finalScore = $calcResult['display_score'];
+                $prevScoreVal = (int)Capsule::table('mod_chs_scores')
+                    ->where('client_id', $clientId)
+                    ->value('score');
+
+                if ($prevScoreVal === null) {
+                    $prevScoreVal = $finalScore;
                 }
 
-                $rulesFromDb = $this->getRulesForProfile($profileId);
-                $dbWeights = [];
-                $enabledSignals = [];
-                foreach ($rulesFromDb as $r) {
-                    $dbWeights[$r['metric_key']] = (float)$r['weight'];
-                    if ($r['is_enabled']) {
-                        $enabledSignals[$r['metric_key']] = true;
-                    }
-                }
-
-                $rawSignals = [
-                    'avg_days_late'             => (float)$metrics['avg_days_late'],
-                    'failed_payment_attempts'   => (int)$metrics['failed_payment_attempts'],
-                    'overdue_invoice_count'     => (int)$metrics['overdue_invoice_count'],
-                    'login_recency_days'        => $loginRecencyDays,
-                    'login_count_90_days'       => (int)$metrics['login_count_90_days'],
-                    'downgrade_count_12_months' => (int)$metrics['downgrade_count_12_months'],
-                    'usage_trend'               => $metrics['usage_trend'],
-                ];
-
-                $availableSignals = [
-                    'avg_days_late'             => (bool)($enabledSignals['avg_days_late'] ?? true),
-                    'failed_payment_attempts'   => (bool)($enabledSignals['failed_payment_attempts'] ?? true),
-                    'overdue_invoice_count'     => (bool)($enabledSignals['overdue_invoice_count'] ?? true),
-                    'login_recency_days'        => (bool)($enabledSignals['login_recency_days'] ?? true),
-                    'login_count_90_days'       => (bool)($enabledSignals['login_count_90_days'] ?? true),
-                    'downgrade_count_12_months' => (bool)($enabledSignals['downgrade_count_12_months'] ?? true),
-                    'usage_trend'               => ($metrics['usage_trend'] !== null) && (bool)($enabledSignals['usage_trend'] ?? true),
-                ];
-
-                // Resolve sub-factor scores
-                $resolvedScores = [];
-                foreach ($rawSignals as $key => $rawVal) {
-                    $resolvedScores[$key] = ScoreBandResolver::resolve(
-                        $key,
-                        $rawVal,
-                        $profileId,
-                        $isNewAccount,
-                        $dampMultiplier
-                    );
-                }
-
-                // Default weights
-                $defaultPaymentWeights = [
-                    'avg_days_late'           => $dbWeights['avg_days_late'] ?? (isset($dbWeights['avg_days_late']) ? 0.0 : 40.0),
-                    'failed_payment_attempts' => $dbWeights['failed_payment_attempts'] ?? (isset($dbWeights['failed_payment_attempts']) ? 0.0 : 30.0),
-                    'overdue_invoice_count'   => $dbWeights['overdue_invoice_count'] ?? (isset($dbWeights['overdue_invoice_count']) ? 0.0 : 30.0),
-                ];
-                $defaultEngagementWeights = [
-                    'login_recency_days'        => $dbWeights['login_recency_days'] ?? (isset($dbWeights['login_recency_days']) ? 0.0 : 35.0),
-                    'login_count_90_days'       => $dbWeights['login_count_90_days'] ?? (isset($dbWeights['login_count_90_days']) ? 0.0 : 25.0),
-                    'downgrade_count_12_months' => $dbWeights['downgrade_count_12_months'] ?? (isset($dbWeights['downgrade_count_12_months']) ? 0.0 : 20.0),
-                    'usage_trend'               => $dbWeights['usage_trend'] ?? (isset($dbWeights['usage_trend']) ? 0.0 : 20.0),
-                ];
-
-                $normalizedPaymentWeights = WeightResolver::normalizeAvailableWeights($defaultPaymentWeights, $availableSignals);
-                $normalizedEngagementWeights = WeightResolver::normalizeAvailableWeights($defaultEngagementWeights, $availableSignals);
-
-                // Component score calculations
-                $paymentScore = 0.0;
-                foreach ($normalizedPaymentWeights as $key => $weight) {
-                    if ($weight > 0) {
-                        $paymentScore += $resolvedScores[$key]['score'] * ($weight / 100.0);
-                    }
-                }
-
-                // Apply Refund/Chargeback deduction
-                if ($metrics['refund_or_chargeback_count'] > 0) {
-                    $paymentScore -= 30.0;
-                }
-                $paymentScore = max(0.0, min(100.0, $paymentScore));
-
-                $engagementScore = 0.0;
-                foreach ($normalizedEngagementWeights as $key => $weight) {
-                    if ($weight > 0) {
-                        $engagementScore += $resolvedScores[$key]['score'] * ($weight / 100.0);
-                    }
-                }
-                $engagementScore = max(0.0, min(100.0, $engagementScore));
-
-                // Final Score
-                $payCompWeight = (float)($profileSettings['payment_weight'] ?? 50.0);
-                $engCompWeight = (float)($profileSettings['engagement_weight'] ?? 50.0);
-                if ($payCompWeight <= 0.0 && $engCompWeight <= 0.0) {
-                    $payCompWeight = 50.0;
-                    $engCompWeight = 50.0;
-                }
-
-                $finalScoreFloat = ($paymentScore * $payCompWeight + $engagementScore * $engCompWeight) / ($payCompWeight + $engCompWeight);
-                $finalScoreFloat = max(0.0, min(100.0, $finalScoreFloat));
-
-                $internalScoreRounded = round($finalScoreFloat, 2);
-                $finalScore = (int)round($internalScoreRounded);
-
-                // Resolve Tier
-                $resolvedTier = TierResolver::resolve($internalScoreRounded, $profileId);
-                $tier = $resolvedTier['tier'];
-
-                // Build Breakdown
+                // Setup breakdown structure to match what is saved in mod_chs_scores
                 $breakdown = [];
-                foreach ($resolvedScores as $key => $res) {
-                    $isPayment = in_array($key, ['avg_days_late', 'failed_payment_attempts', 'overdue_invoice_count']);
-                    $weightUsed = $isPayment ? ($normalizedPaymentWeights[$key] ?? 0.0) : ($normalizedEngagementWeights[$key] ?? 0.0);
-
-                    $breakdown[$key] = [
-                        'name'        => str_replace('_', ' ', $key),
-                        'raw_value'   => $res['raw_value'],
-                        'score'       => $res['score'],
-                        'band_label'  => $res['band'] . ' (' . $res['label'] . ')',
-                        'weight'      => $weightUsed,
-                        'points'      => round($res['score'] - 100.0, 2),
-                        'explanation' => $res['label'] . ' (Weight: ' . round($weightUsed, 1) . '%)' . ($isNewAccount && !$isPayment ? " [Dampened]" : ""),
+                // Flatten pay & eng breakdowns into a single array for dashboard display
+                foreach ($calcResult['breakdown']['payment'] as $b) {
+                    $breakdown[$b['signal']] = [
+                        'name'        => str_replace('_', ' ', $b['signal']),
+                        'raw_value'   => $b['raw_value'],
+                        'score'       => $b['score'],
+                        'band_label'  => $b['band_label'],
+                        'weight'      => $b['weight'],
+                        'points'      => round($b['score'] - 100.0, 2),
+                        'explanation' => str_replace(' (Weight: ' . round($b['weight'], 1) . '%)', '', $b['band_label']) . ' (Weight: ' . round($b['weight'], 1) . '%)',
+                    ];
+                }
+                foreach ($calcResult['breakdown']['engagement'] as $b) {
+                    $breakdown[$b['signal']] = [
+                        'name'        => str_replace('_', ' ', $b['signal']),
+                        'raw_value'   => $b['raw_value'],
+                        'score'       => $b['score'],
+                        'band_label'  => $b['band_label'],
+                        'weight'      => $b['weight'],
+                        'points'      => round($b['score'] - 100.0, 2),
+                        'explanation' => str_replace(' (Weight: ' . round($b['weight'], 1) . '%)', '', $b['band_label']) . ' (Weight: ' . round($b['weight'], 1) . '%)' . ($isNewAccount ? " [Dampened]" : ""),
                     ];
                 }
 
-                if ($metrics['refund_or_chargeback_count'] > 0) {
+                // Add refund flag breakdown if present
+                if (!empty($collected['payment']['refund_or_chargeback']['value'])) {
                     $breakdown['refund_or_chargeback'] = [
                         'name'        => 'refund or chargeback flag',
-                        'raw_value'   => $metrics['refund_or_chargeback_count'],
+                        'raw_value'   => 1,
                         'score'       => -30.0,
                         'band_label'  => 'Refunded',
                         'weight'      => 0.0,
@@ -336,32 +271,9 @@ class Controller
                     ];
                 }
 
-                // Risk drivers (score <= 50)
-                $riskDrivers = [];
-                foreach ($resolvedScores as $key => $res) {
-                    if ($res['score'] <= 50.0) {
-                        $isPayment = in_array($key, ['avg_days_late', 'failed_payment_attempts', 'overdue_invoice_count']);
-                        $weightUsed = $isPayment ? ($normalizedPaymentWeights[$key] ?? 0.0) : ($normalizedEngagementWeights[$key] ?? 0.0);
+                $breakdown['risk_drivers'] = $calcResult['risk_drivers_sorted'];
 
-                        $riskDrivers[] = [
-                            'key'         => $key,
-                            'name'        => str_replace('_', ' ', $key),
-                            'score'       => $res['score'],
-                            'weight'      => $weightUsed,
-                            'points'      => round($res['score'] - 100.0, 2),
-                            'explanation' => $res['label'],
-                        ];
-                    }
-                }
-                usort($riskDrivers, function ($a, $b) {
-                    if ($a['score'] != $b['score']) {
-                        return $a['score'] <=> $b['score'];
-                    }
-                    return $b['weight'] <=> $a['weight'];
-                });
-                $breakdown['risk_drivers'] = $riskDrivers;
-
-                // Trend logic
+                // 5. Calculate Trend
                 $lookbackDays = (int)($profileSettings['trend_lookback_days'] ?? $this->getSetting('trend_lookback_days', 14));
                 $targetDate = date('Y-m-d', strtotime("-{$lookbackDays} days"));
 
@@ -371,20 +283,13 @@ class Controller
                     ->orderBy('date', 'desc')
                     ->first();
 
-                $existingScore = Capsule::table('mod_chs_scores')
-                    ->where('client_id', $clientId)
-                    ->value('score');
-
                 if ($prevScoreRecord) {
-                    $prevScore = (int)$prevScoreRecord->score;
-                } elseif ($existingScore !== null) {
-                    $prevScore = (int)$existingScore;
+                    $trendScore = (int)$prevScoreRecord->score;
                 } else {
-                    $prevScore = $finalScore;
+                    $trendScore = $prevScoreVal;
                 }
 
-                $delta = $finalScore - $prevScore;
-
+                $delta = $finalScore - $trendScore;
                 if ($delta >= 5) {
                     $trend = 'up';
                 } elseif ($delta <= -5) {
@@ -393,19 +298,20 @@ class Controller
                     $trend = 'stable';
                 }
 
-                // Save
+                // 6. Save results to DB
                 $this->saveScore(
                     $clientId,
                     $finalScore,
-                    (int)round($paymentScore),
-                    (int)round($engagementScore),
+                    (int)round($calcResult['payment_score']),
+                    (int)round($calcResult['engagement_score']),
                     $trend,
-                    $prevScore,
+                    $prevScoreVal,
                     $breakdown
                 );
 
-                // Process Alerts
-                $this->processAlertsForClient($clientId, $finalScore, $prevScore);
+                // 7. Process alerts via AlertService
+                $alertService = new \WHMCS\Module\Addon\ClientHealthScore\AlertService();
+                $alertService->checkAndSendAlerts($clientId, $calcResult, $prevScoreVal);
 
                 $results[$clientId] = $finalScore;
             } catch (\Exception $clientEx) {
@@ -1350,7 +1256,6 @@ class Controller
         if (date('l') !== $digestDay) {
             return;
         }
-
         $lastDigest = Capsule::table('mod_chs_weekly_digest_logs')
             ->orderBy('sent_at', 'desc')
             ->value('sent_at');
@@ -1370,216 +1275,10 @@ class Controller
         }
 
         try {
-            $stats = $this->getStats();
-
-            $downgrades = Capsule::table('mod_chs_scores')
-                ->whereRaw('score < prev_score')
-                ->count();
-
-            $upgrades = Capsule::table('mod_chs_scores')
-                ->whereRaw('score > prev_score')
-                ->count();
-
-            $biggestDrops = Capsule::table('tblclients')
-                ->join('mod_chs_scores', 'tblclients.id', '=', 'mod_chs_scores.client_id')
-                ->select([
-                    'tblclients.id',
-                    'tblclients.firstname',
-                    'tblclients.lastname',
-                    'tblclients.companyname',
-                    'mod_chs_scores.score',
-                    'mod_chs_scores.prev_score',
-                    Capsule::raw('(mod_chs_scores.prev_score - mod_chs_scores.score) as delta')
-                ])
-                ->whereRaw('mod_chs_scores.score < mod_chs_scores.prev_score')
-                ->orderBy('delta', 'desc')
-                ->limit(5)
-                ->get()
-                ->map(function($item) { return (array)$item; })
-                ->toArray();
-
-            $biggestImprovements = Capsule::table('tblclients')
-                ->join('mod_chs_scores', 'tblclients.id', '=', 'mod_chs_scores.client_id')
-                ->select([
-                    'tblclients.id',
-                    'tblclients.firstname',
-                    'tblclients.lastname',
-                    'tblclients.companyname',
-                    'mod_chs_scores.score',
-                    'mod_chs_scores.prev_score',
-                    Capsule::raw('(mod_chs_scores.score - mod_chs_scores.prev_score) as delta')
-                ])
-                ->whereRaw('mod_chs_scores.score > mod_chs_scores.prev_score')
-                ->orderBy('delta', 'desc')
-                ->limit(5)
-                ->get()
-                ->map(function($item) { return (array)$item; })
-                ->toArray();
-
-            $atRisk = Capsule::select("
-                SELECT c.id, c.firstname, c.lastname, c.companyname, s.score,
-                   ((SELECT COALESCE(SUM(
-                      CASE WHEN billingcycle = 'Monthly' THEN amount
-                           WHEN billingcycle = 'Quarterly' THEN amount / 3
-                           WHEN billingcycle = 'Semi-Annually' THEN amount / 6
-                           WHEN billingcycle = 'Annually' THEN amount / 12
-                           WHEN billingcycle = 'Biennially' THEN amount / 24
-                           WHEN billingcycle = 'Triennially' THEN amount / 36
-                           ELSE 0 END
-                    ), 0) FROM tblhosting WHERE userid = c.id AND domainstatus = 'Active') +
-                   (SELECT COALESCE(SUM(recurringamount / registrationperiod), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
-                FROM tblclients c
-                JOIN mod_chs_scores s ON c.id = s.client_id
-                WHERE s.score >= 35 AND s.score < 60 AND c.status = 'Active'
-                ORDER BY mrr DESC, s.score ASC
-                LIMIT 5
-            ");
-            $atRiskList = array_map(function($item) { return (array)$item; }, $atRisk);
-
-            $critical = Capsule::select("
-                SELECT c.id, c.firstname, c.lastname, c.companyname, s.score,
-                   ((SELECT COALESCE(SUM(
-                      CASE WHEN billingcycle = 'Monthly' THEN amount
-                           WHEN billingcycle = 'Quarterly' THEN amount / 3
-                           WHEN billingcycle = 'Semi-Annually' THEN amount / 6
-                           WHEN billingcycle = 'Annually' THEN amount / 12
-                           WHEN billingcycle = 'Biennially' THEN amount / 24
-                           WHEN billingcycle = 'Triennially' THEN amount / 36
-                           ELSE 0 END
-                    ), 0) FROM tblhosting WHERE userid = c.id AND domainstatus = 'Active') +
-                   (SELECT COALESCE(SUM(recurringamount / registrationperiod), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
-                FROM tblclients c
-                JOIN mod_chs_scores s ON c.id = s.client_id
-                WHERE s.score < 35 AND c.status = 'Active'
-                ORDER BY mrr DESC, s.score ASC
-                LIMIT 5
-            ");
-            $criticalList = array_map(function($item) { return (array)$item; }, $critical);
-
-            $adminEmail = $this->getSetting('digest_recipients');
-            if (empty($adminEmail)) {
-                $adminEmail = Capsule::table('tblconfiguration')->where('setting', 'Email')->value('value');
-            }
-
-            if (empty($adminEmail)) {
-                throw new \Exception("No admin recipient email configured.");
-            }
-
-            $subject = "WHMCS Client Health Weekly Digest - " . date('Y-m-d');
-            
-            $body = "<div style='font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;'>";
-            $body .= "<h2>Client Health Weekly Digest Report</h2>";
-            $body .= "<p>Here is your weekly summary of client health scores, trend changes, and potential churn risks.</p>";
-            
-            $body .= "<h3>General Statistics</h3>";
-            $body .= "<ul>";
-            $body .= "  <li>Average Health Score: <strong>" . ($stats['average_score'] ?? 'N/A') . "/100</strong></li>";
-            $body .= "  <li>Total Evaluated Clients: <strong>" . $stats['total_clients'] . "</strong></li>";
-            $body .= "  <li>Healthy Clients (score >= 80): <strong style='color:#10b981;'>" . $stats['healthy'] . "</strong></li>";
-            $body .= "  <li>Watch / Warning Clients (score 60-79): <strong style='color:#f59e0b;'>" . $stats['warning'] . "</strong></li>";
-            $body .= "  <li>At-Risk / Critical Clients (score < 60): <strong style='color:#ef4444;'>" . $stats['critical'] . "</strong></li>";
-            $body .= "  <li>Newly Downgraded this week: <strong>{$downgrades}</strong></li>";
-            $body .= "  <li>Newly Improved this week: <strong>{$upgrades}</strong></li>";
-            $body .= "</ul>";
-
-            $body .= "<h3>Top Critical Clients by MRR (Score &lt; 35)</h3>";
-            if (empty($criticalList)) {
-                $body .= "<p style='color:#10b981;'>No critical clients found.</p>";
-            } else {
-                $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
-                $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Health Score</th><th>MRR</th></tr>";
-                foreach ($criticalList as $c) {
-                    $name = $c['firstname'] . ' ' . $c['lastname'];
-                    if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
-                    $body .= "  <tr><td><strong>" . htmlspecialchars($name) . "</strong></td><td align='center'>" . $c['score'] . "</td><td align='right'>$" . number_format($c['mrr'], 2) . "</td></tr>";
-                }
-                $body .= "</table>";
-            }
-
-            $body .= "<h3>Top At-Risk Clients by MRR (Score 35-59)</h3>";
-            if (empty($atRiskList)) {
-                $body .= "<p style='color:#10b981;'>No at-risk clients found.</p>";
-            } else {
-                $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
-                $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Health Score</th><th>MRR</th></tr>";
-                foreach ($atRiskList as $c) {
-                    $name = $c['firstname'] . ' ' . $c['lastname'];
-                    if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
-                    $body .= "  <tr><td><strong>" . htmlspecialchars($name) . "</strong></td><td align='center'>" . $c['score'] . "</td><td align='right'>$" . number_format($c['mrr'], 2) . "</td></tr>";
-                }
-                $body .= "</table>";
-            }
-
-            $body .= "<h3>Biggest Score Drops</h3>";
-            if (empty($biggestDrops)) {
-                $body .= "<p>No client score drops recorded.</p>";
-            } else {
-                $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
-                $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Previous Score</th><th>Current Score</th><th>Drop</th></tr>";
-                foreach ($biggestDrops as $c) {
-                    $name = $c['firstname'] . ' ' . $c['lastname'];
-                    if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
-                    $body .= "  <tr><td>" . htmlspecialchars($name) . "</td><td align='center'>{$c['prev_score']}</td><td align='center'>{$c['score']}</td><td align='center' style='color:#ef4444; font-weight:bold;'>-{$c['delta']}</td></tr>";
-                }
-                $body .= "</table>";
-            }
-
-            $body .= "<h3>Biggest Score Improvements</h3>";
-            if (empty($biggestImprovements)) {
-                $body .= "<p>No client score improvements recorded.</p>";
-            } else {
-                $body .= "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; font-size:12px; width:100%;'>";
-                $body .= "  <tr style='background-color:#f2f2f2;'><th>Client Name</th><th>Previous Score</th><th>Current Score</th><th>Improvement</th></tr>";
-                foreach ($biggestImprovements as $c) {
-                    $name = $c['firstname'] . ' ' . $c['lastname'];
-                    if ($c['companyname']) { $name .= ' (' . $c['companyname'] . ')'; }
-                    $body .= "  <tr><td>" . htmlspecialchars($name) . "</td><td align='center'>{$c['prev_score']}</td><td align='center'>{$c['score']}</td><td align='center' style='color:#10b981; font-weight:bold;'>+{$c['delta']}</td></tr>";
-                }
-                $body .= "</table>";
-            }
-
-            $body .= "<p style='font-size:11px; color:#666; margin-top:20px;'>Generated by WHMCS Client Health Score Addon.</p>";
-            $body .= "</div>";
-
-            $emails = array_map('trim', explode(',', $adminEmail));
-            $success = true;
-            foreach ($emails as $email) {
-                if (empty($email)) {
-                    continue;
-                }
-                $apiResult = localAPI('SendAdminEmail', [
-                    'customsubject' => $subject,
-                    'custommessage' => $body,
-                    'mergefields'   => [],
-                    'email'         => $email
-                ]);
-                if ($apiResult['result'] !== 'success') {
-                    $success = false;
-                    Capsule::table('mod_chs_audit_logs')->insert([
-                        'action'       => 'weekly_digest_failure',
-                        'level'        => 'error',
-                        'description'  => "Failed to send weekly digest email to {$email}. API Response: " . json_encode($apiResult),
-                        'performed_by' => 'system',
-                        'created_at'   => date('Y-m-d H:i:s'),
-                    ]);
-                }
-            }
-
-            Capsule::table('mod_chs_weekly_digest_logs')->insert([
-                'sent_at'    => date('Y-m-d H:i:s'),
-                'recipients' => $adminEmail,
-                'stats'      => json_encode($stats),
-                'status'     => $success ? 'success' : 'failed',
-            ]);
+            $alertService = new \WHMCS\Module\Addon\ClientHealthScore\AlertService();
+            $alertService->sendWeeklyDigest();
         } catch (\Exception $e) {
             logActivity("Client Health Weekly Digest generation failed: " . $e->getMessage());
-            Capsule::table('mod_chs_audit_logs')->insert([
-                'action'       => 'weekly_digest_failure',
-                'level'        => 'error',
-                'description'  => "Weekly digest cron error: " . $e->getMessage(),
-                'performed_by' => 'system',
-                'created_at'   => date('Y-m-d H:i:s'),
-            ]);
         }
     }
 
