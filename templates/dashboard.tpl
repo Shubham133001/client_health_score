@@ -17,30 +17,16 @@
                 </div>
             </div>
         </div>
+        {foreach $bands as $band}
         <div class="col-md-2 col-sm-4 col-xs-6">
             <div class="panel panel-default text-center" style="margin-bottom: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <div class="panel-body" style="padding: 15px;">
-                    <div style="font-size: 24px; font-weight: bold; color: #10b981;">{$stats.healthy}</div>
-                    <div class="text-muted" style="font-size: 11px; font-weight: bold; text-transform: uppercase;">Healthy</div>
+                    <div style="font-size: 24px; font-weight: bold; color: {$band.badge_color};">{$stats.bands_count[$band.slug]|default:0}</div>
+                    <div class="text-muted" style="font-size: 11px; font-weight: bold; text-transform: uppercase;">{$band.name}</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-2 col-sm-4 col-xs-6">
-            <div class="panel panel-default text-center" style="margin-bottom: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-body" style="padding: 15px;">
-                    <div style="font-size: 24px; font-weight: bold; color: #f59e0b;">{$stats.warning}</div>
-                    <div class="text-muted" style="font-size: 11px; font-weight: bold; text-transform: uppercase;">Warning</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-2 col-sm-4 col-xs-6">
-            <div class="panel panel-default text-center" style="margin-bottom: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-body" style="padding: 15px;">
-                    <div style="font-size: 24px; font-weight: bold; color: #ef4444;">{$stats.critical}</div>
-                    <div class="text-muted" style="font-size: 11px; font-weight: bold; text-transform: uppercase;">Critical Churn</div>
-                </div>
-            </div>
-        </div>
+        {/foreach}
         <div class="col-md-2 col-sm-4 col-xs-6">
             <div class="panel panel-default text-center" style="margin-bottom: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <div class="panel-body" style="padding: 15px;">
@@ -71,9 +57,9 @@
         </div>
     </div>
 
-    <!-- Tier Distribution Visual bar -->
+    <!-- Health Status Distribution Visual bar -->
     <div class="panel panel-default" style="margin-bottom: 20px;">
-        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-users"></i> Client Tier Distribution</div>
+        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-users"></i> Client Health Status Distribution</div>
         <div class="panel-body" style="padding: 12px;">
             {assign var="totalDist" value=$stats.total_clients|default:1}
             <div class="progress" style="height: 24px; margin-bottom: 0;">
@@ -186,9 +172,9 @@
                     <label for="status" class="sr-only">Health Status</label>
                     <select name="status" id="status" class="form-control input-sm">
                         <option value="">All Health Statuses</option>
-                        <option value="healthy" {if $statusFilter == 'healthy'}selected{/if}>Healthy (>= 80)</option>
-                        <option value="warning" {if $statusFilter == 'warning'}selected{/if}>Watch (60-79)</option>
-                        <option value="critical" {if $statusFilter == 'critical'}selected{/if}>Critical Churn (< 60)</option>
+                        {foreach $bands as $band}
+                            <option value="{$band.slug}" {if $statusFilter == $band.slug}selected{/if}>{$band.name} ({$band.min_score}-{$band.max_score})</option>
+                        {/foreach}
                         <option value="unevaluated" {if $statusFilter == 'unevaluated'}selected{/if}>Unevaluated</option>
                     </select>
                 </div>
@@ -236,11 +222,14 @@
                         <td><a href="mailto:{$client.email}">{$client.email}</a></td>
                         <td class="text-center" style="vertical-align: middle;">
                             {if $client.score !== null}
-                                <span class="badge" style="background-color: {$client.tier_color|default:'#6b7280'}; font-weight: bold; padding: 4px 8px; font-size: 12px; display: inline-block;" title="{$client.tier_name}">
+                                <span class="badge" style="background-color: {$client.status_band_color|default:'#6b7280'}; font-weight: bold; padding: 4px 8px; font-size: 12px; display: inline-block;" title="{$client.status_band_name}">
                                     {$client.score}
                                 </span>
-                                <div style="font-size: 10px; font-weight: bold; color: {$client.tier_color|default:'#6b7280'}; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    {$client.tier_name}
+                                <div style="font-size: 10px; font-weight: bold; color: {$client.status_band_color|default:'#6b7280'}; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    {$client.status_band_name}
+                                    {if $client.is_overridden}
+                                        <i class="fa fa-anchor text-warning" title="Manual Override Active (Pinned to {$client.override_tier})"></i>
+                                    {/if}
                                 </div>
                             {else}
                                 <span class="text-muted" style="font-size: 11px;">Unevaluated</span>

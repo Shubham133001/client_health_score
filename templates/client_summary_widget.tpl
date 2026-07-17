@@ -1,81 +1,96 @@
-<div class="clientsummaryactions" style="margin-bottom: 15px;">
-    <div class="panel panel-default" style="border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div class="panel-heading" style="font-weight: bold; background-color: #306599; color: #fff; border-color: #306599; border-radius: 3px 3px 0 0;">
-            <i class="fa fa-heartbeat"></i> Client Health Overview
+<div style="margin-bottom: 20px; background: #fff; border: 1px solid #ddd; border-left: 5px solid {$scoreColor|default:'#6b7280'}; border-radius: 4px; padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); font-family: system-ui, -apple-system, sans-serif;">
+    {if $success}
+        <div class="alert alert-success" style="padding: 6px 12px; font-size: 11px; margin-bottom: 10px; border-radius: 4px;">
+            <i class="fa fa-check"></i> Score recalculated successfully.
         </div>
-        <div class="panel-body" style="padding: 12px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px;">
-            {if $success}
-                <div class="alert alert-success" style="padding: 6px; font-size: 11px; margin-bottom: 10px;">
-                    <i class="fa fa-check"></i> Score recalculated successfully.
-                </div>
-            {/if}
+    {/if}
 
-            {if $scoreRecord}
-                <!-- Score Gauge -->
-                <div style="text-align: center; margin-bottom: 10px;">
-                    <div style="font-size: 26px; font-weight: bold; line-height: 1; color: {if $scoreRecord.score >= 80}#10b981{elseif $scoreRecord.score >= 50}#f59e0b{else}#ef4444{/if};">
-                        {$scoreRecord.score}/100
-                    </div>
-                    <div class="progress" style="height: 6px; margin: 8px auto 4px auto; background-color: #eee; width: 85%;">
-                        <div class="progress-bar" role="progressbar" style="width: {$scoreRecord.score}%; background-color: {if $scoreRecord.score >= 80}#10b981{elseif $scoreRecord.score >= 50}#f59e0b{else}#ef4444{/if};"></div>
+    {if $scoreRecord}
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+            <!-- Column 1: Score Badge and Status -->
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="width: 50px; height: 50px; border-radius: 50%; background: {$scoreColor|default:'#6b7280'}; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    {$scoreRecord.score}
+                </div>
+                <div>
+                    <div style="font-size: 10px; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 0.5px;">Client Health Status</div>
+                    <div style="font-size: 15px; font-weight: bold; color: {$scoreColor|default:'#6b7280'}; text-transform: uppercase; display: flex; align-items: center; gap: 5px; margin-top: 2px;">
+                        {if $isOverridden}
+                            <i class="fa fa-anchor" title="Pinned by override" style="color: #f59e0b;"></i>
+                            <span class="label label-warning" style="font-size: 10px; padding: 2px 5px;">PINNED: {$overrideTier}</span>
+                        {else}
+                            {$scoreRecord.status_band_name|default:'Unknown'}
+                        {/if}
                     </div>
                 </div>
+            </div>
 
-                <!-- Trend & Category Scores -->
-                <table class="table table-condensed" style="font-size: 11px; margin-bottom: 8px; border-bottom: 1px solid #eee;">
-                    <tr>
-                        <td><strong>Trend:</strong></td>
-                        <td class="text-right">
-                            {if $scoreRecord.trend == 'up'}
-                                <span class="text-success" style="font-weight: bold;"><i class="fa fa-arrow-up"></i> Improving</span>
-                            {elseif $scoreRecord.trend == 'down'}
-                                <span class="text-danger" style="font-weight: bold;"><i class="fa fa-arrow-down"></i> Declining</span>
-                            {else}
-                                <span class="text-muted"><i class="fa fa-arrow-right"></i> Stable</span>
+            <!-- Column 2: Trend & Category Scores -->
+            <div style="display: flex; gap: 30px; align-items: center; border-left: 1px solid #eee; border-right: 1px solid #eee; padding: 0 30px; flex-grow: 1;">
+                <div>
+                    <div style="font-size: 10px; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 2px;">Trend</div>
+                    <div style="font-size: 13px; margin-top: 3px;">
+                        {if $scoreRecord.trend == 'up'}
+                            <span class="text-success" style="font-weight: bold;"><i class="fa fa-arrow-up"></i> Improving</span>
+                        {elseif $scoreRecord.trend == 'down'}
+                            <span class="text-danger" style="font-weight: bold;"><i class="fa fa-arrow-down"></i> Declining</span>
+                        {else}
+                            <span class="text-muted" style="font-weight: bold;"><i class="fa fa-arrow-right"></i> Stable</span>
+                        {/if}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 10px; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 2px;">Payment Score</div>
+                    <div style="font-size: 14px; font-weight: bold; color: {$paymentScoreColor|default:'#6b7280'}; margin-top: 3px;">
+                        {$scoreRecord.payment_score}/100
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 10px; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 2px;">Engagement Score</div>
+                    <div style="font-size: 14px; font-weight: bold; color: {$engagementScoreColor|default:'#6b7280'}; margin-top: 3px;">
+                        {$scoreRecord.engagement_score}/100
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 3: Top Risk Drivers -->
+            <div style="flex-grow: 1; max-width: 280px; min-width: 200px;">
+                <div style="font-size: 10px; text-transform: uppercase; color: #777; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 4px;">Top Risk Drivers</div>
+                {if !empty($breakdown.risk_drivers)}
+                    <div style="font-size: 11px; color: #ef4444; max-height: 38px; overflow-y: auto; line-height: 1.3;">
+                        {foreach from=$breakdown.risk_drivers item=driver name=drivers}
+                            {if $smarty.foreach.drivers.iteration <= 2}
+                                <div style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden;" title="{$driver.explanation}">
+                                    <i class="fa fa-warning" style="font-size: 10px;"></i> <strong>-{$driver.points} pts:</strong> {$driver.name}
+                                </div>
                             {/if}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>Payment Score:</strong></td>
-                        <td class="text-right"><strong style="color: {if $scoreRecord.payment_score >= 80}#10b981{elseif $scoreRecord.payment_score >= 50}#f59e0b{else}#ef4444{/if};">{$scoreRecord.payment_score}/100</strong></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Engagement Score:</strong></td>
-                        <td class="text-right"><strong style="color: {if $scoreRecord.engagement_score >= 80}#10b981{elseif $scoreRecord.engagement_score >= 50}#f59e0b{else}#ef4444{/if};">{$scoreRecord.engagement_score}/100</strong></td>
-                    </tr>
-                </table>
+                        {/foreach}
+                    </div>
+                {else}
+                    <div style="font-size: 11px; color: #10b981; font-style: italic; margin-top: 3px;">
+                        <i class="fa fa-check-circle"></i> No critical risk drivers
+                    </div>
+                {/if}
+            </div>
 
-                <!-- Risk Drivers -->
-                <div style="margin-bottom: 10px;">
-                    <div style="font-weight: bold; font-size: 10px; text-transform: uppercase; color: #777; margin-bottom: 4px;">Top Risk Drivers</div>
-                    {if !empty($breakdown.risk_drivers)}
-                        <ul style="padding-left: 12px; margin-bottom: 0; font-size: 10.5px; color: #ef4444;">
-                            {foreach from=$breakdown.risk_drivers item=driver}
-                                <li style="margin-bottom: 3px;" title="{$driver.explanation}">
-                                    <strong>{$driver.points} pts:</strong> {$driver.name}
-                                </li>
-                            {/foreach}
-                        </ul>
-                    {else}
-                        <div class="text-muted" style="font-size: 10.5px; font-style: italic;">No critical risk drivers.</div>
-                    {/if}
-                </div>
-
-                <!-- Actions -->
-                <div style="display: flex; gap: 5px; margin-top: 10px;">
-                    <a href="clientssummary.php?userid={$scoreRecord.client_id}&chs_recalculate=1" class="btn btn-default btn-xs" style="flex: 1; font-weight: bold;">
-                        <i class="fa fa-refresh"></i> Recalc Now
-                    </a>
-                    <a href="addonmodules.php?module=client_health_score&action=client&id={$scoreRecord.client_id}" class="btn btn-primary btn-xs" style="flex: 1; font-weight: bold; color: #fff;">
-                        <i class="fa fa-search"></i> Full Profile
-                    </a>
-                </div>
-            {else}
-                <div class="text-muted text-center" style="padding: 10px 0; font-size: 11px;">No Health Score Calculated</div>
-                <a href="clientssummary.php?userid={$smarty.get.userid}&chs_recalculate=1" class="btn btn-primary btn-xs btn-block" style="font-weight: bold; color: #fff; margin-top: 10px;">
-                    <i class="fa fa-refresh"></i> Run Calculation Now
+            <!-- Column 4: Quick Buttons -->
+            <div style="display: flex; gap: 8px;">
+                <a href="clientssummary.php?userid={$scoreRecord.client_id}&chs_recalculate=1" class="btn btn-default btn-sm" style="font-weight: bold; display: flex; align-items: center; gap: 5px;">
+                    <i class="fa fa-refresh"></i> Recalculate
                 </a>
-            {/if}
+                <a href="addonmodules.php?module=client_health_score&action=client&id={$scoreRecord.client_id}" class="btn btn-primary btn-sm" style="font-weight: bold; color: #fff; background-color: #306599; border-color: #306599; display: flex; align-items: center; gap: 5px;">
+                    <i class="fa fa-search"></i> Full Profile
+                </a>
+            </div>
         </div>
-    </div>
+    {else}
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="font-size: 13px; font-weight: bold; color: #777; display: flex; align-items: center; gap: 8px;">
+                <i class="fa fa-info-circle" style="font-size: 16px; color: #306599;"></i> No health score calculated for this client yet.
+            </div>
+            <a href="clientssummary.php?userid={$smarty.get.userid}&chs_recalculate=1" class="btn btn-primary btn-sm" style="font-weight: bold; color: #fff; background-color: #306599; border-color: #306599;">
+                <i class="fa fa-refresh"></i> Run Calculation Now
+            </a>
+        </div>
+    {/if}
 </div>

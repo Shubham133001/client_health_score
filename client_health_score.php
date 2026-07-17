@@ -69,6 +69,7 @@ function client_health_score_activate()
         $db->statement("DROP TABLE IF EXISTS `mod_client_health_scores`");
 
         // Drop new tables if they exist to force a clean test slate
+        $db->statement("DROP TABLE IF EXISTS `mod_chs_manual_overrides`");
         $db->statement("DROP TABLE IF EXISTS `mod_chs_weekly_digest_logs`");
         $db->statement("DROP TABLE IF EXISTS `mod_chs_recalculations`");
         $db->statement("DROP TABLE IF EXISTS `mod_chs_audit_logs`");
@@ -226,13 +227,14 @@ function client_health_score_activate()
         $db->statement("
             CREATE TABLE IF NOT EXISTS `mod_chs_tiers` (
                 `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                `profile_id` INT UNSIGNED NOT NULL DEFAULT 1,
                 `name` VARCHAR(50) NOT NULL,
                 `min_score` INT NOT NULL,
                 `max_score` INT NOT NULL,
                 `badge_color` VARCHAR(20) NOT NULL DEFAULT '#4f46e5',
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY `uk_tiers_name` (`name`),
+                UNIQUE KEY `uk_tiers_profile_name` (`profile_id`, `name`),
                 INDEX `idx_tiers_score` (`min_score`, `max_score`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
@@ -241,12 +243,13 @@ function client_health_score_activate()
         $db->statement("
             CREATE TABLE IF NOT EXISTS `mod_chs_score_bands` (
                 `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                `profile_id` INT UNSIGNED NOT NULL DEFAULT 1,
                 `name` VARCHAR(50) NOT NULL,
                 `min_score` INT NOT NULL,
                 `max_score` INT NOT NULL,
                 `severity_level` VARCHAR(15) NOT NULL DEFAULT 'info',
                 `badge_color` VARCHAR(20) NOT NULL DEFAULT '#6b7280',
-                UNIQUE KEY `uk_bands_name` (`name`),
+                UNIQUE KEY `uk_bands_profile_name` (`profile_id`, `name`),
                 INDEX `idx_bands_score` (`min_score`, `max_score`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
@@ -290,6 +293,21 @@ function client_health_score_activate()
                 `stats` JSON NOT NULL,
                 `status` VARCHAR(15) NOT NULL DEFAULT 'success',
                 INDEX `idx_digests_sent` (`sent_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        // 15. Manual Overrides Table
+        $db->statement("
+            CREATE TABLE IF NOT EXISTS `mod_chs_manual_overrides` (
+                `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                `client_id` INT(10) NOT NULL,
+                `tier` VARCHAR(50) NOT NULL,
+                `reason` TEXT NOT NULL,
+                `expiry_date` DATE NULL,
+                `created_by` VARCHAR(100) NOT NULL DEFAULT 'system',
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY `uk_overrides_client` (`client_id`),
+                CONSTRAINT `fk_overrides_client` FOREIGN KEY (`client_id`) REFERENCES `tblclients` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
@@ -365,6 +383,7 @@ function client_health_score_activate()
 
         $bands = [
             [
+                'profile_id'     => 1,
                 'name'           => 'Healthy',
                 'min_score'      => 80,
                 'max_score'      => 100,
@@ -372,6 +391,7 @@ function client_health_score_activate()
                 'badge_color'    => '#10b981',
             ],
             [
+                'profile_id'     => 1,
                 'name'           => 'Watch',
                 'min_score'      => 60,
                 'max_score'      => 79,
@@ -379,6 +399,7 @@ function client_health_score_activate()
                 'badge_color'    => '#f59e0b',
             ],
             [
+                'profile_id'     => 1,
                 'name'           => 'At-Risk',
                 'min_score'      => 35,
                 'max_score'      => 59,
@@ -386,6 +407,7 @@ function client_health_score_activate()
                 'badge_color'    => '#f0ad4e',
             ],
             [
+                'profile_id'     => 1,
                 'name'           => 'Critical',
                 'min_score'      => 0,
                 'max_score'      => 34,
@@ -397,24 +419,28 @@ function client_health_score_activate()
 
         $tiers = [
             [
+                'profile_id'  => 1,
                 'name'        => 'Healthy',
                 'min_score'   => 80,
                 'max_score'   => 100,
                 'badge_color' => '#10b981',
             ],
             [
+                'profile_id'  => 1,
                 'name'        => 'Watch',
                 'min_score'   => 60,
                 'max_score'   => 79,
                 'badge_color' => '#f59e0b',
             ],
             [
+                'profile_id'  => 1,
                 'name'        => 'At-Risk',
                 'min_score'   => 35,
                 'max_score'   => 59,
                 'badge_color' => '#f0ad4e',
             ],
             [
+                'profile_id'  => 1,
                 'name'        => 'Critical',
                 'min_score'   => 0,
                 'max_score'   => 34,

@@ -24,7 +24,8 @@
                         <span style="margin-right: 15px;"><strong>Client ID:</strong> {$client->id}</span>
                         <span style="margin-right: 15px;"><strong>Email:</strong> <a href="mailto:{$client->email}">{$client->email}</a></span>
                         <span style="margin-right: 15px;"><strong>Status:</strong> <span class="label label-{if $client->status == 'Active'}success{else}default{/if}">{$client->status}</span></span>
-                        <span><strong>Score Band:</strong> <span class="label" style="background-color: {$tierColor|default:'#6b7280'}; text-transform: uppercase;">{$tierName}</span></span>
+                        <span style="margin-right: 15px;"><strong>Health Status:</strong> <span class="label" style="background-color: {$statusBandColor|default:'#6b7280'}; text-transform: uppercase;">{$statusBandName}</span></span>
+                        <span><strong>Loyalty Tier:</strong> <span class="label" style="background-color: {$tierColor|default:'#6b7280'}; text-transform: uppercase;">{$tierName}</span></span>
                     </div>
                     <a href="clientssummary.php?userid={$client->id}" class="btn btn-default btn-xs" target="_blank">
                         <i class="fa fa-user"></i> Go to WHMCS Client Profile
@@ -38,7 +39,7 @@
                              <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="10" />
                              <!-- Colored Ring -->
                              <circle cx="60" cy="60" r="50" fill="none" 
-                                     stroke="{$tierColor|default:'#6b7280'}" 
+                                     stroke="{$statusBandColor|default:'#6b7280'}" 
                                      stroke-width="10" 
                                      stroke-dasharray="314" 
                                      stroke-dashoffset="{314 - (314 * $scoreRecord.score / 100)}" 
@@ -46,8 +47,8 @@
                                      transform="rotate(-90 60 60)" 
                                      style="transition: stroke-dashoffset 0.8s ease;" />
                             <!-- Central Score Text -->
-                            <text x="60" y="68" fill="#333" font-size="28" font-weight="bold" text-anchor="middle">
-                                {$scoreRecord.score}
+                            <text x="60" y="68" fill="{$statusBandColor|default:'#333'}" font-size="28" font-weight="bold" text-anchor="middle">
+                                {$scoreRecord.score|default:0}
                             </text>
                         </svg>
                     </div>
@@ -136,6 +137,74 @@
 
         <!-- Right Side: Details Cards -->
         <div class="col-md-5">
+            {if $success_override}
+                <div class="alert alert-success" style="margin-bottom: 20px; font-size: 12px; padding: 10px;">
+                    <i class="fa fa-check"></i> Manual health tier override saved successfully.
+                </div>
+            {/if}
+            {if $success_override_rem}
+                <div class="alert alert-success" style="margin-bottom: 20px; font-size: 12px; padding: 10px;">
+                    <i class="fa fa-check"></i> Manual health tier override removed successfully.
+                </div>
+            {/if}
+
+            <!-- Manual Health Tier Override (Spec 30.1) -->
+            <div class="panel panel-{if $override}warning{else}default{/if}" style="margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div class="panel-heading" style="font-weight: bold; {if $override}background-color: #fcf8e3; color: #8a6d3b; border-color: #faebcc;{else}background-color: #f5f5f5;{/if}">
+                    <i class="fa fa-anchor"></i> Manual Health Tier Override
+                </div>
+                <div class="panel-body">
+                    {if $override}
+                        <!-- Active Override Details -->
+                        <div style="font-size: 12px; margin-bottom: 15px;">
+                            <div style="margin-bottom: 10px;">
+                                <span>Override Status:</span> 
+                                <span class="label" style="background-color: {$statusBandColor}; font-size: 11px; padding: 3px 6px; text-transform: uppercase;">PINNED / {$override.tier}</span>
+                            </div>
+                            <div style="margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                                <strong>Reason / Notes:</strong><br/>
+                                <span class="text-muted" style="display: block; margin-top: 4px; font-style: italic;">"{$override.reason|escape}"</span>
+                            </div>
+                            <div style="margin-bottom: 6px;">
+                                <strong>Pinned By:</strong> <span class="text-muted">{$override.created_by|escape}</span>
+                            </div>
+                            <div style="margin-bottom: 6px;">
+                                <strong>Pinned On:</strong> <span class="text-muted">{$override.created_at|date_format:"%Y-%m-%d %H:%M"}</span>
+                            </div>
+                            <div>
+                                <strong>Expires On:</strong> <span class="text-muted">{if $override.expiry_date}{$override.expiry_date}{else}Never (Permanent){/if}</span>
+                            </div>
+                        </div>
+                        <a href="{$moduleLink}&action=client&sub=delete_override&id={$client->id}" class="btn btn-block btn-danger btn-sm" onclick="return confirm('Are you sure you want to remove this manual health tier override?');" style="font-weight: bold;">
+                            <i class="fa fa-remove"></i> Remove Manual Override
+                        </a>
+                    {else}
+                        <!-- Create Override Form -->
+                        <form method="post" action="{$moduleLink}&action=client&sub=save_override&id={$client->id}">
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">Select Override Tier:</label>
+                                <select name="tier" class="form-control input-sm" required>
+                                    {foreach $bands as $band}
+                                        <option value="{$band.name}">{$band.name} (Calculated: {$band.min_score}-{$band.max_score})</option>
+                                    {/foreach}
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">Reason / Notes:</label>
+                                <textarea name="reason" rows="2" class="form-control input-sm" placeholder="e.g., Enterprise client with custom SLA - override warning tier." required style="resize: vertical;"></textarea>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="font-size: 11px; font-weight: bold; margin-bottom: 4px;">Expiry Date (Optional):</label>
+                                <input type="date" name="expiry_date" class="form-control input-sm" />
+                            </div>
+                            <button type="submit" class="btn btn-block btn-warning btn-sm" style="font-weight: bold;">
+                                <i class="fa fa-save"></i> Save Manual Override
+                            </button>
+                        </form>
+                    {/if}
+                </div>
+            </div>
+
             <!-- Payment Signals -->
             <div class="panel panel-default" style="margin-bottom: 20px;">
                 <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-credit-card"></i> Payment & Invoice Signals</div>
@@ -224,6 +293,16 @@ jQuery(document).ready(function($) {
     
     var pathPoints = [];
     var circlesHtml = '';
+    var bands = {$bands|json_encode};
+
+    function getScoreColor(score) {
+        for (var idx = 0; idx < bands.length; idx++) {
+            if (score >= parseInt(bands[idx].min_score) && score <= parseInt(bands[idx].max_score)) {
+                return bands[idx].badge_color;
+            }
+        }
+        return '#6b7280';
+    }
 
     for (var i = 0; i < pointsCount; i++) {
         var x = padding + (i * xStep);
@@ -233,18 +312,21 @@ jQuery(document).ready(function($) {
         pathPoints.push(x + ',' + y);
 
         // Hover circle points
-        var dotColor = scoreVal >= 80 ? '#10b981' : (scoreVal >= 50 ? '#f59e0b' : '#ef4444');
+        var dotColor = getScoreColor(scoreVal);
         circlesHtml += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="' + dotColor + '" stroke="#fff" stroke-width="1.5"><title>Date: ' + history[i].date + ' | Score: ' + scoreVal + '</title></circle>';
     }
 
     var polylineHtml = '<polyline points="' + pathPoints.join(' ') + '" fill="none" stroke="#306599" stroke-width="2.5" />';
     
-    // Draw background grid lines (horizontal 50 and 80)
+    // Draw background grid lines dynamically based on bands thresholds
     var gridLinesHtml = '';
-    var y80 = padding + chartHeight - (chartHeight * 80 / 100);
-    var y50 = padding + chartHeight - (chartHeight * 50 / 100);
-    gridLinesHtml += '<line x1="' + padding + '" y1="' + y80 + '" x2="' + (width - padding) + '" y2="' + y80 + '" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3" />';
-    gridLinesHtml += '<line x1="' + padding + '" y1="' + y50 + '" x2="' + (width - padding) + '" y2="' + y50 + '" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3" />';
+    for (var idx = 0; idx < bands.length; idx++) {
+        var threshold = parseInt(bands[idx].min_score);
+        if (threshold > 0) {
+            var yThreshold = padding + chartHeight - (chartHeight * threshold / 100);
+            gridLinesHtml += '<line x1="' + padding + '" y1="' + yThreshold + '" x2="' + (width - padding) + '" y2="' + yThreshold + '" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3" />';
+        }
+    }
     
     svg.innerHTML = gridLinesHtml + polylineHtml + circlesHtml;
 });

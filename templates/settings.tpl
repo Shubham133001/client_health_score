@@ -8,9 +8,15 @@
     </ul>
 
     {if $message}
-        <div class="alert alert-success" style="margin-bottom: 20px;">
-            <i class="fa fa-check"></i> {$message}
-        </div>
+        {if strpos($message, 'Error') === 0}
+            <div class="alert alert-danger" style="margin-bottom: 20px;">
+                <i class="fa fa-exclamation-triangle"></i> {$message}
+            </div>
+        {else}
+            <div class="alert alert-success" style="margin-bottom: 20px;">
+                <i class="fa fa-check"></i> {$message}
+            </div>
+        {/if}
     {/if}
 
     <form method="post" action="{$moduleLink}&action=save_settings">
@@ -203,14 +209,14 @@
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Discord Webhook URL</label>
                             <input type="url" name="settings[webhook_discord_url]" class="form-control input-sm" placeholder="https://discord.com/api/webhooks/..." value="{$settings.webhook_discord_url|escape}" />
                         </div>
-                        <div class="form-group" style="display: block; margin-bottom: 15px;">
+                       <!-- <div class="form-group" style="display: block; margin-bottom: 15px;">
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Microsoft Teams Webhook URL</label>
                             <input type="url" name="settings[webhook_teams_url]" class="form-control input-sm" placeholder="https://outlook.office.com/webhook/..." value="{$settings.webhook_teams_url|escape}" />
                         </div>
                         <div class="form-group" style="display: block; margin-bottom: 5px;">
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Generic JSON Webhook URL</label>
                             <input type="url" name="settings[webhook_generic_url]" class="form-control input-sm" placeholder="https://yourdomain.com/endpoint" value="{$settings.webhook_generic_url|escape}" />
-                        </div>
+                        </div> -->
                     </div>
                 </div>
 

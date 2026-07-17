@@ -116,37 +116,37 @@ class ClientSignalCollector
         return [
             'payment' => [
                 'avg_days_late' => [
-                    'available' => isset($enabledSignals['avg_days_late']) ? (bool)$enabledSignals['avg_days_late'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['avg_days_late']),
                     'value' => $avgLate,
                 ],
                 'failed_payment_attempts' => [
-                    'available' => isset($enabledSignals['failed_payment_attempts']) ? (bool)$enabledSignals['failed_payment_attempts'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['failed_payment_attempts']),
                     'value' => $failedCount,
                 ],
                 'overdue_invoice_count' => [
-                    'available' => isset($enabledSignals['overdue_invoice_count']) ? (bool)$enabledSignals['overdue_invoice_count'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['overdue_invoice_count']),
                     'value' => $overdueCount,
                 ],
                 'refund_or_chargeback' => [
-                    'available' => isset($enabledSignals['refund_or_chargeback']) ? (bool)$enabledSignals['refund_or_chargeback'] : true,
+                    'available' => true,
                     'value' => ($refundedCount > 0),
                 ],
             ],
             'engagement' => [
                 'login_recency_days' => [
-                    'available' => isset($enabledSignals['login_recency_days']) ? (bool)$enabledSignals['login_recency_days'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['login_recency_days']),
                     'value' => $loginRecencyDays,
                 ],
                 'login_count_90_days' => [
-                    'available' => isset($enabledSignals['login_count_90_days']) ? (bool)$enabledSignals['login_count_90_days'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['login_count_90_days']),
                     'value' => $loginCount,
                 ],
                 'downgrade_count_12_months' => [
-                    'available' => isset($enabledSignals['downgrade_count_12_months']) ? (bool)$enabledSignals['downgrade_count_12_months'] : true,
+                    'available' => !$enabledSignals || !empty($enabledSignals['downgrade_count_12_months']),
                     'value' => $downgradeCount,
                 ],
                 'usage_trend' => [
-                    'available' => isset($enabledSignals['usage_trend']) ? (bool)$enabledSignals['usage_trend'] : $usageTrendAvailable,
+                    'available' => !$enabledSignals || !empty($enabledSignals['usage_trend']),
                     'value' => $usageTrendValue,
                 ],
             ],

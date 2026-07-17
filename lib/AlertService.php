@@ -50,13 +50,33 @@ class AlertService
         $prevTier = $clientController->getTierForScore($prevScore, $profileId);
         $currTier = $clientController->getTierForScore($score, $profileId);
 
-        $tierSeverities = [
-            'healthy'  => 0,
-            'watch'    => 1,
-            'at-risk'  => 2,
-            'at_risk'  => 2,
-            'critical' => 3
-        ];
+        $tierSeverities = [];
+        try {
+            $tiersDb = Capsule::table('mod_chs_tiers')
+                ->where('profile_id', $profileId)
+                ->orderBy('min_score', 'desc')
+                ->get();
+            if ($tiersDb->isEmpty() && $profileId !== 1) {
+                $tiersDb = Capsule::table('mod_chs_tiers')
+                    ->where('profile_id', 1)
+                    ->orderBy('min_score', 'desc')
+                    ->get();
+            }
+            foreach ($tiersDb as $index => $t) {
+                $key = strtolower(str_replace([' ', '-'], '_', $t->name));
+                $tierSeverities[$key] = $index;
+            }
+        } catch (\Exception $e) {}
+
+        if (empty($tierSeverities)) {
+            $tierSeverities = [
+                'healthy'  => 0,
+                'watch'    => 1,
+                'at-risk'  => 2,
+                'at_risk'  => 2,
+                'critical' => 3
+            ];
+        }
 
         $prevSeverity = $tierSeverities[strtolower(str_replace(' ', '_', $prevTier))] ?? 0;
         $currSeverity = $tierSeverities[strtolower(str_replace(' ', '_', $currTier))] ?? 0;

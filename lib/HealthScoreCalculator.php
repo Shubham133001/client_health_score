@@ -13,28 +13,47 @@ class HealthScoreCalculator
     /**
      * Orchestrate calculation for payment & engagement components and produce final health summary.
      */
-    public static function calculate(int $clientId, array $collectedSignals, array $dbWeights, array $profileSettings, bool $isNewAccount = false, float $dampMultiplier = 1.5): array
+    public static function calculate(int $clientId, array $collectedSignals, array $dbWeights, array $profileSettings, bool $isNewAccount = false, float $dampMultiplier = 1.5, int $profileId = 1): array
     {
-        // Extract weights for Payment
-        $payWeights = [
-            'avg_days_late'           => $dbWeights['avg_days_late'] ?? 40.0,
-            'failed_payment_attempts' => $dbWeights['failed_payment_attempts'] ?? 30.0,
-            'overdue_invoice_count'   => $dbWeights['overdue_invoice_count'] ?? 30.0,
-        ];
+        $payWeights = [];
+        $engWeights = [];
+        foreach ($dbWeights as $key => $weight) {
+            $keyLower = strtolower($key);
+            $isPayment = strpos($keyLower, 'invoice') !== false 
+                || strpos($keyLower, 'payment') !== false 
+                || strpos($keyLower, 'revenue') !== false 
+                || strpos($keyLower, 'billing') !== false
+                || strpos($keyLower, 'late') !== false;
+                
+            if ($isPayment) {
+                $payWeights[$key] = (float)$weight;
+            } else {
+                $engWeights[$key] = (float)$weight;
+            }
+        }
 
-        // Extract weights for Engagement
-        $engWeights = [
-            'login_recency_days'        => $dbWeights['login_recency_days'] ?? 35.0,
-            'login_count_90_days'       => $dbWeights['login_count_90_days'] ?? 25.0,
-            'downgrade_count_12_months' => $dbWeights['downgrade_count_12_months'] ?? 20.0,
-            'usage_trend'               => $dbWeights['usage_trend'] ?? 20.0,
-        ];
+        // Default fallbacks in case dbWeights table is empty or missing metrics
+        if (empty($payWeights)) {
+            $payWeights = [
+                'avg_days_late'           => 40.0,
+                'failed_payment_attempts' => 30.0,
+                'overdue_invoice_count'   => 30.0,
+            ];
+        }
+        if (empty($engWeights)) {
+            $engWeights = [
+                'login_recency_days'        => 35.0,
+                'login_count_90_days'       => 25.0,
+                'downgrade_count_12_months' => 20.0,
+                'usage_trend'               => 20.0,
+            ];
+        }
 
         $hasRefund = !empty($collectedSignals['payment']['refund_or_chargeback']['value']);
 
         // Calculate Component Scores
-        $payResult = PaymentScoreCalculator::calculate($collectedSignals['payment'], $payWeights, $hasRefund);
-        $engResult = EngagementScoreCalculator::calculate($collectedSignals['engagement'], $engWeights, $isNewAccount, $dampMultiplier);
+        $payResult = PaymentScoreCalculator::calculate($collectedSignals['payment'], $payWeights, $hasRefund, $profileId);
+        $engResult = EngagementScoreCalculator::calculate($collectedSignals['engagement'], $engWeights, $isNewAccount, $dampMultiplier, $profileId);
 
         // Apply Component Weights
         $payCompWeight = (float)($profileSettings['payment_weight'] ?? 50.0);
@@ -51,7 +70,7 @@ class HealthScoreCalculator
         $displayScore = (int)round($internalScoreRounded);
 
         // Resolve Tier
-        $resolvedTier = TierResolver::resolve($internalScoreRounded);
+        $resolvedTier = TierResolver::resolve($internalScoreRounded, $profileId);
         $tier = $resolvedTier['tier'];
 
         // Detect risk drivers (sub-factor score <= 50)

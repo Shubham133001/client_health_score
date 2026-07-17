@@ -55,6 +55,14 @@ class ClientHealthService
      */
     public function getTopAtRiskByMrr(int $limit = 10): array
     {
+        $watchMin = 60;
+        try {
+            $watchMin = Capsule::table('mod_chs_score_bands')
+                ->where('profile_id', 1)
+                ->where('name', 'Watch')
+                ->value('min_score') ?? 60;
+        } catch (\Exception $e) {}
+
         $atRisk = Capsule::select("
             SELECT c.id, c.firstname, c.lastname, c.companyname, s.score, s.trend,
                ((SELECT COALESCE(SUM(
@@ -69,7 +77,7 @@ class ClientHealthService
                (SELECT COALESCE(SUM(recurringamount / registrationperiod / 12), 0) FROM tbldomains WHERE userid = c.id AND status = 'Active')) as mrr
             FROM tblclients c
             JOIN mod_chs_scores s ON c.id = s.client_id
-            WHERE s.score < 60 AND c.status = 'Active'
+            WHERE s.score < " . (int)$watchMin . " AND c.status = 'Active'
             ORDER BY mrr DESC, s.score ASC
             LIMIT " . (int)$limit . "
         ");

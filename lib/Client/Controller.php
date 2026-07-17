@@ -220,7 +220,8 @@ class Controller
                     $dbWeights,
                     $profileSettings,
                     $isNewAccount,
-                    $dampMultiplier
+                    $dampMultiplier,
+                    $profileId
                 );
 
                 $finalScore = $calcResult['display_score'];
@@ -556,20 +557,56 @@ class Controller
         }
 
         if (!empty($statusFilter)) {
-            switch ($statusFilter) {
-                case 'healthy':
-                    $query->where('mod_chs_scores.score', '>=', 80);
-                    break;
-                case 'warning':
-                    $query->where('mod_chs_scores.score', '>=', 50)
-                          ->where('mod_chs_scores.score', '<', 80);
-                    break;
-                case 'critical':
-                    $query->where('mod_chs_scores.score', '<', 50);
-                    break;
-                case 'unevaluated':
-                    $query->whereNull('mod_chs_scores.score');
-                    break;
+            if ($statusFilter === 'unevaluated') {
+                $query->whereNull('mod_chs_scores.score');
+            } else {
+                $profileIdSql = "COALESCE(
+                    (SELECT profile_id FROM mod_chs_profile_assignments WHERE client_id = tblclients.id LIMIT 1),
+                    (SELECT profile_id FROM mod_chs_profile_assignments WHERE group_id = tblclients.groupid LIMIT 1),
+                    (SELECT profile_id FROM mod_chs_profile_assignments WHERE product_id IN (SELECT packageid FROM tblhosting WHERE userid = tblclients.id AND domainstatus = 'Active') LIMIT 1),
+                    (SELECT id FROM mod_chs_profiles WHERE is_default = 1 LIMIT 1),
+                    1
+                )";
+
+                $profiles = Capsule::table('mod_chs_profiles')->get();
+                $query->where(function ($q) use ($profiles, $statusFilter, $profileIdSql) {
+                    $first = true;
+                    foreach ($profiles as $p) {
+                        $band = Capsule::table('mod_chs_score_bands')
+                            ->where('profile_id', $p->id)
+                            ->get()
+                            ->filter(function ($b) use ($statusFilter) {
+                                $slug = strtolower(str_replace([' ', '-'], '_', $b->name));
+                                return $slug === $statusFilter;
+                            })
+                            ->first();
+                        
+                        if (!$band && $p->id !== 1) {
+                            $band = Capsule::table('mod_chs_score_bands')
+                                ->where('profile_id', 1)
+                                ->get()
+                                ->filter(function ($b) use ($statusFilter) {
+                                    $slug = strtolower(str_replace([' ', '-'], '_', $b->name));
+                                    return $slug === $statusFilter;
+                                })
+                                ->first();
+                        }
+                        
+                        if ($band) {
+                            $clause = function ($subQ) use ($p, $band, $profileIdSql) {
+                                $subQ->whereRaw("{$profileIdSql} = {$p->id}")
+                                     ->where('mod_chs_scores.score', '>=', (int)$band->min_score)
+                                     ->where('mod_chs_scores.score', '<=', (int)$band->max_score);
+                            };
+                            if ($first) {
+                                $q->where($clause);
+                                $first = false;
+                            } else {
+                                $q->orWhere($clause);
+                            }
+                        }
+                    }
+                });
             }
         }
 
@@ -624,22 +661,69 @@ class Controller
             ->get()
             ->toArray();
 
-        $tiers = Capsule::table('mod_chs_tiers')
+        $profiles = Capsule::table('mod_chs_profiles')->get()->toArray();
+        $tiersByProfile = [];
+        $bandsByProfile = [];
+        foreach ($profiles as $p) {
+            $tiersByProfile[$p->id] = Capsule::table('mod_chs_tiers')
+                ->where('profile_id', $p->id)
+                ->orderBy('min_score', 'desc')
+                ->get()
+                ->toArray();
+            $bandsByProfile[$p->id] = Capsule::table('mod_chs_score_bands')
+                ->where('profile_id', $p->id)
+                ->orderBy('min_score', 'desc')
+                ->get()
+                ->toArray();
+        }
+
+        $defaultTiers = Capsule::table('mod_chs_tiers')
+            ->where('profile_id', 1)
             ->orderBy('min_score', 'desc')
             ->get()
             ->toArray();
 
-        $items = array_map(function ($item) use ($tiers) {
+        $defaultBands = Capsule::table('mod_chs_score_bands')
+            ->where('profile_id', 1)
+            ->orderBy('min_score', 'desc')
+            ->get()
+            ->toArray();
+
+        $now = date('Y-m-d');
+        $overrides = Capsule::table('mod_chs_manual_overrides')
+            ->where(function($q) use ($now) {
+                $q->whereNull('expiry_date')
+                  ->orWhere('expiry_date', '>=', $now);
+            })
+            ->get()
+            ->keyBy('client_id')
+            ->toArray();
+
+        $items = array_map(function ($item) use ($tiersByProfile, $bandsByProfile, $defaultTiers, $defaultBands, $overrides) {
             $arr = (array)$item;
             if ($arr['breakdown']) {
                 $arr['breakdown'] = json_decode($arr['breakdown'], true);
             }
             
-            // Resolve tier name and color
+            // Resolve profile ID for this client
+            $clientId = (int)$arr['client_id'];
+            $profileId = $this->resolveProfileIdForClient($clientId);
+            
+            $clientTiers = $tiersByProfile[$profileId] ?? $defaultTiers;
+            if (empty($clientTiers)) {
+                $clientTiers = $defaultTiers;
+            }
+            
+            $clientBands = $bandsByProfile[$profileId] ?? $defaultBands;
+            if (empty($clientBands)) {
+                $clientBands = $defaultBands;
+            }
+            
+            // Resolve tier name and color (Loyalty Tier)
             $arr['tier_name'] = 'Unevaluated';
             $arr['tier_color'] = '#6b7280';
             if ($arr['score'] !== null) {
-                foreach ($tiers as $t) {
+                foreach ($clientTiers as $t) {
                     if ($arr['score'] >= $t->min_score && $arr['score'] <= $t->max_score) {
                         $arr['tier_name'] = $t->name;
                         $arr['tier_color'] = $t->badge_color;
@@ -647,6 +731,40 @@ class Controller
                     }
                 }
             }
+
+            // Resolve health status band name and color (Health Score Status Band)
+            $arr['status_band_name'] = 'Unevaluated';
+            $arr['status_band_color'] = '#6b7280';
+            if ($arr['score'] !== null) {
+                foreach ($clientBands as $b) {
+                    if ($arr['score'] >= $b->min_score && $arr['score'] <= $b->max_score) {
+                        $arr['status_band_name'] = $b->name;
+                        $arr['status_band_color'] = $b->badge_color;
+                        break;
+                    }
+                }
+            }
+
+            // Apply manual override if active
+            if (isset($overrides[$clientId])) {
+                $ov = $overrides[$clientId];
+                $arr['is_overridden'] = true;
+                $arr['override_tier'] = $ov->tier;
+                $arr['override_reason'] = $ov->reason;
+
+                $overrideColor = '#6b7280';
+                foreach ($clientBands as $b) {
+                    if (strcasecmp($b->name, $ov->tier) === 0) {
+                        $overrideColor = $b->badge_color;
+                        break;
+                    }
+                }
+                $arr['status_band_name'] = 'PINNED: ' . $ov->tier;
+                $arr['status_band_color'] = $overrideColor;
+            } else {
+                $arr['is_overridden'] = false;
+            }
+
             return $arr;
         }, $records);
 
@@ -667,28 +785,88 @@ class Controller
             ->where('status', '!=', 'Closed')
             ->count();
 
-        $stats = Capsule::table('mod_chs_scores')
-            ->selectRaw('
-                COUNT(CASE WHEN score >= 80 THEN 1 END) as healthy,
-                COUNT(CASE WHEN score >= 60 AND score < 80 THEN 1 END) as warning,
-                COUNT(CASE WHEN score < 60 THEN 1 END) as critical,
-                AVG(score) as average
-            ')
-            ->first();
+        // Load all active profiles and their bands
+        $profiles = Capsule::table('mod_chs_profiles')->get()->toArray();
+        $bandsByProfile = [];
+        foreach ($profiles as $p) {
+            $bandsByProfile[$p->id] = Capsule::table('mod_chs_score_bands')
+                ->where('profile_id', $p->id)
+                ->orderBy('min_score', 'desc')
+                ->get()
+                ->toArray();
+        }
+        
+        $defaultBands = Capsule::table('mod_chs_score_bands')
+            ->where('profile_id', 1)
+            ->orderBy('min_score', 'desc')
+            ->get()
+            ->toArray();
 
-        $healthy = (int)($stats->healthy ?? 0);
-        $warning = (int)($stats->warning ?? 0);
-        $critical = (int)($stats->critical ?? 0);
-        $averageScore = $stats->average !== null ? round((float)$stats->average, 1) : null;
+        $now = date('Y-m-d');
+        $overrides = Capsule::table('mod_chs_manual_overrides')
+            ->where(function($q) use ($now) {
+                $q->whereNull('expiry_date')
+                  ->orWhere('expiry_date', '>=', $now);
+            })
+            ->get()
+            ->keyBy('client_id')
+            ->toArray();
 
-        $unevaluated = $totalClients - ($healthy + $warning + $critical);
-        $unevaluated = max(0, $unevaluated);
+        $scores = Capsule::table('mod_chs_scores')->get()->toArray();
+        
+        $bandsCount = [
+            'healthy'  => 0,
+            'watch'    => 0,
+            'at_risk'  => 0,
+            'critical' => 0,
+        ];
+        
+        $totalEvaluated = 0;
+        $scoreSum = 0;
+        $scoreCount = 0;
+
+        foreach ($scores as $s) {
+            $scoreVal = (int)$s->score;
+            $scoreSum += $scoreVal;
+            $scoreCount++;
+            
+            $clientId = (int)$s->client_id;
+            
+            if (isset($overrides[$clientId])) {
+                $ov = $overrides[$clientId];
+                $slug = strtolower(str_replace([' ', '-'], '_', $ov->tier));
+                if (isset($bandsCount[$slug])) {
+                    $bandsCount[$slug]++;
+                }
+                $totalEvaluated++;
+            } else {
+                // Resolve profile ID for this client
+                $profileId = $this->resolveProfileIdForClient($clientId);
+                
+                $bands = $bandsByProfile[$profileId] ?? $defaultBands;
+                if (empty($bands)) {
+                    $bands = $defaultBands;
+                }
+                
+                foreach ($bands as $b) {
+                    if ($scoreVal >= $b->min_score && $scoreVal <= $b->max_score) {
+                        $slug = strtolower(str_replace([' ', '-'], '_', $b->name));
+                        if (isset($bandsCount[$slug])) {
+                            $bandsCount[$slug]++;
+                        }
+                        $totalEvaluated++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $averageScore = $scoreCount > 0 ? round($scoreSum / $scoreCount, 1) : null;
+        $unevaluated = max(0, $totalClients - $totalEvaluated);
 
         return [
             'total_clients' => $totalClients,
-            'healthy'       => $healthy,
-            'warning'       => $warning,
-            'critical'      => $critical,
+            'bands_count'   => $bandsCount,
             'unevaluated'   => $unevaluated,
             'average_score' => $averageScore,
         ];

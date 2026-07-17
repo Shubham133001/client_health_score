@@ -90,5 +90,23 @@
                 </tbody>
             </table>
         </div>
+        {if $totalPages > 1}
+            <div class="panel-footer" style="background-color: #fff; border-top: 1px solid #ddd; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-muted" style="font-size: 12px;">Page <strong>{$page}</strong> of {$totalPages} (Total Records: {$total})</span>
+                <ul class="pagination pagination-sm" style="margin: 0;">
+                    <li class="{if $page <= 1}disabled{/if}">
+                        <a href="{if $page > 1}{$moduleLink}&action=audit&page={$page-1}{else}#{/if}">&laquo; Prev</a>
+                    </li>
+                    {for $p=1 to $totalPages}
+                        <li class="{if $page == $p}active{/if}">
+                            <a href="{$moduleLink}&action=audit&page={$p}">{$p}</a>
+                        </li>
+                    {/for}
+                    <li class="{if $page >= $totalPages}disabled{/if}">
+                        <a href="{if $page < $totalPages}{$moduleLink}&action=audit&page={$page+1}{else}#{/if}">Next &raquo;</a>
+                    </li>
+                </ul>
+            </div>
+        {/if}
     </div>
 </div>

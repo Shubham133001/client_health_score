@@ -11,7 +11,7 @@ class PaymentScoreCalculator
     /**
      * Calculate payment score based on signals and weights.
      */
-    public static function calculate(array $paymentSignals, array $weights, bool $hasRefundOrChargeback = false): array
+    public static function calculate(array $paymentSignals, array $weights, bool $hasRefundOrChargeback = false, int $profileId = 1): array
     {
         $availableSignals = [];
         foreach ($paymentSignals as $key => $signal) {
@@ -33,7 +33,7 @@ class PaymentScoreCalculator
 
             $weightUsed = $normalizedWeights[$key] ?? 0.0;
             // Resolve score band details
-            $resolved = ScoreBandResolver::resolve($key, $signal['value']);
+            $resolved = ScoreBandResolver::resolve($key, $signal['value'], $profileId);
 
             if ($signal['available'] && $weightUsed > 0) {
                 $score += $resolved['score'] * ($weightUsed / 100.0);

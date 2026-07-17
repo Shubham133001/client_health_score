@@ -70,10 +70,78 @@ add_hook('AdminAreaClientSummaryPage', 1, function ($vars) {
                 : $scoreRecord['breakdown'];
         }
 
+        $profileId = $clientController->resolveProfileIdForClient($clientId);
+        $bands = [];
+        try {
+            $bands = Capsule::table('mod_chs_score_bands')
+                ->where('profile_id', $profileId)
+                ->orderBy('min_score', 'desc')
+                ->get()
+                ->toArray();
+            if (empty($bands) && $profileId !== 1) {
+                $bands = Capsule::table('mod_chs_score_bands')
+                    ->where('profile_id', 1)
+                    ->orderBy('min_score', 'desc')
+                    ->get()
+                    ->toArray();
+            }
+        } catch (\Exception $e) {}
+
+        // Fetch manual override
+        $now = date('Y-m-d');
+        $override = Capsule::table('mod_chs_manual_overrides')
+            ->where('client_id', $clientId)
+            ->where(function($q) use ($now) {
+                $q->whereNull('expiry_date')
+                  ->orWhere('expiry_date', '>=', $now);
+            })
+            ->first();
+
+        $scoreColor = '#6b7280';
+        $paymentScoreColor = '#6b7280';
+        $engagementScoreColor = '#6b7280';
+
+        if ($scoreRecord) {
+            $score = (int)($scoreRecord['score'] ?? 100);
+            $payScore = (int)($scoreRecord['payment_score'] ?? 100);
+            $engScore = (int)($scoreRecord['engagement_score'] ?? 100);
+
+            if ($override) {
+                $overrideColor = '#6b7280';
+                foreach ($bands as $b) {
+                    if (strcasecmp($b->name, $override->tier) === 0) {
+                        $overrideColor = $b->badge_color;
+                        break;
+                    }
+                }
+                $scoreColor = $overrideColor;
+            } else {
+                foreach ($bands as $b) {
+                    if ($score >= $b->min_score && $score <= $b->max_score) {
+                        $scoreColor = $b->badge_color;
+                    }
+                }
+            }
+
+            foreach ($bands as $b) {
+                if ($payScore >= $b->min_score && $payScore <= $b->max_score) {
+                    $paymentScoreColor = $b->badge_color;
+                }
+                if ($engScore >= $b->min_score && $engScore <= $b->max_score) {
+                    $engagementScoreColor = $b->badge_color;
+                }
+            }
+        }
+
         return AdminController::renderTemplate('client_summary_widget', [
-            'scoreRecord' => $scoreRecord,
-            'breakdown'   => $breakdown,
-            'success'     => isset($_REQUEST['chs_success']),
+            'scoreRecord'          => $scoreRecord,
+            'breakdown'            => $breakdown,
+            'success'              => isset($_REQUEST['chs_success']),
+            'scoreColor'           => $scoreColor,
+            'paymentScoreColor'    => $paymentScoreColor,
+            'engagementScoreColor' => $engagementScoreColor,
+            'isOverridden'         => !empty($override),
+            'overrideTier'         => $override ? $override->tier : '',
         ]);
     } catch (\Exception $e) {
         return "<div class='alert alert-danger'>Health Score Error: " . htmlspecialchars($e->getMessage()) . "</div>";
@@ -209,6 +277,9 @@ add_hook('CancellationRequest', 1, function ($vars) {
 
 // --- 5. Client Hooks ---
 add_hook('ClientAreaPage', 1, function ($vars) {
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+    }
     $clientId = (int)($_SESSION['uid'] ?? 0);
     if ($clientId > 0) {
         client_health_score_trigger_recalc($clientId);

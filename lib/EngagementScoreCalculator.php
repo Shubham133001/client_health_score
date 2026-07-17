@@ -11,7 +11,7 @@ class EngagementScoreCalculator
     /**
      * Calculate engagement score based on signals, weights, and dampening options.
      */
-    public static function calculate(array $engagementSignals, array $weights, bool $isNewAccount = false, float $dampMultiplier = 1.5): array
+    public static function calculate(array $engagementSignals, array $weights, bool $isNewAccount = false, float $dampMultiplier = 1.5, int $profileId = 1): array
     {
         $availableSignals = [];
         foreach ($engagementSignals as $key => $signal) {
@@ -29,7 +29,7 @@ class EngagementScoreCalculator
         foreach ($engagementSignals as $key => $signal) {
             $weightUsed = $normalizedWeights[$key] ?? 0.0;
             // Resolve score band details with potential new-account dampening
-            $resolved = ScoreBandResolver::resolve($key, $signal['value'], 1, $isNewAccount, $dampMultiplier);
+            $resolved = ScoreBandResolver::resolve($key, $signal['value'], $profileId, $isNewAccount, $dampMultiplier);
 
             if ($signal['available'] && $weightUsed > 0) {
                 $score += $resolved['score'] * ($weightUsed / 100.0);

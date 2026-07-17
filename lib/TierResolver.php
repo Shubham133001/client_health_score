@@ -39,7 +39,16 @@ class TierResolver
         // Fallback to table mod_chs_tiers if profile is empty or not set
         if (empty($tiers)) {
             try {
-                $tiersDb = Capsule::table('mod_chs_tiers')->orderBy('min_score', 'desc')->get();
+                $tiersDb = Capsule::table('mod_chs_tiers')
+                    ->where('profile_id', $profileId)
+                    ->orderBy('min_score', 'desc')
+                    ->get();
+                if ($tiersDb->isEmpty() && $profileId !== 1) {
+                    $tiersDb = Capsule::table('mod_chs_tiers')
+                        ->where('profile_id', 1)
+                        ->orderBy('min_score', 'desc')
+                        ->get();
+                }
                 if ($tiersDb->isNotEmpty()) {
                     foreach ($tiersDb as $t) {
                         $tiers[] = [
