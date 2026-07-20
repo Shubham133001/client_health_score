@@ -32,6 +32,37 @@ try {
     $processedCount = $clientController->calculateAll($batchSize);
     
     echo "Successfully recalculated health scores for {$processedCount} clients.\n";
+
+    // Prune audit logs to keep only the latest 20 records
+    $auditLogsCount = Capsule::table('mod_chs_audit_logs')->count();
+    if ($auditLogsCount > 20) {
+        $cutoffId = Capsule::table('mod_chs_audit_logs')
+            ->orderBy('id', 'desc')
+            ->skip(19)
+            ->value('id');
+        if ($cutoffId) {
+            Capsule::table('mod_chs_audit_logs')
+                ->where('id', '<', $cutoffId)
+                ->delete();
+            echo "Pruned audit logs. Kept the latest 20 records.\n";
+        }
+    }
+
+    // Prune batch recalculations history to keep only the latest 20 records
+    $recalcCount = Capsule::table('mod_chs_recalculations')->count();
+    if ($recalcCount > 20) {
+        $cutoffId = Capsule::table('mod_chs_recalculations')
+            ->orderBy('id', 'desc')
+            ->skip(19)
+            ->value('id');
+        if ($cutoffId) {
+            Capsule::table('mod_chs_recalculations')
+                ->where('id', '<', $cutoffId)
+                ->delete();
+            echo "Pruned batch recalculations history. Kept the latest 20 records.\n";
+        }
+    }
+
     echo "Cron Job Finished.\n";
 } catch (\Exception $e) {
     echo "Cron Execution Error: " . $e->getMessage() . "\n";

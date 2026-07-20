@@ -185,9 +185,7 @@ class Controller
                 $enabledSignals = [];
                 foreach ($rulesFromDb as $r) {
                     $dbWeights[$r['metric_key']] = (float)$r['weight'];
-                    if ($r['is_enabled']) {
-                        $enabledSignals[$r['metric_key']] = true;
-                    }
+                    $enabledSignals[$r['metric_key']] = (bool)$r['is_enabled'];
                 }
 
                 // 2. Collect raw signals

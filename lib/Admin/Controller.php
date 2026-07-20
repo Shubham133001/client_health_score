@@ -361,6 +361,15 @@ class Controller
 
         $clientController = new \WHMCS\Module\Addon\ClientHealthScore\Client\Controller();
 
+        $now = date('Y-m-d');
+        $overrides = Capsule::table('mod_chs_manual_overrides')
+            ->where(function($q) use ($now) {
+                $q->whereNull('expiry_date')
+                  ->orWhere('expiry_date', '>=', $now);
+            })
+            ->get()
+            ->keyBy('client_id');
+
         // 4. Tier, Product Profile & Minimum MRR Filters in PHP
         $filtered = [];
         $filterTier = trim((string)($_REQUEST['tier'] ?? ''));
@@ -383,15 +392,22 @@ class Controller
                 continue;
             }
 
-            // Resolve Tier
-            $tierName = $clientController->getTierForScore($score, $profileId);
+            // Resolve Tier (and check if overridden)
+            $isOverridden = false;
+            if (isset($overrides[$clientId])) {
+                $tierName = $overrides[$clientId]->tier;
+                $isOverridden = true;
+            } else {
+                $tierName = $clientController->getTierForScore($score, $profileId);
+            }
+
             if (!empty($filterTier) && strtolower($tierName) !== strtolower($filterTier)) {
                 continue;
             }
 
             $item['resolved_profile_id'] = $profileId;
             $item['mrr'] = $mrr;
-            $item['tier'] = $tierName;
+            $item['tier'] = $isOverridden ? 'PINNED: ' . $tierName : $tierName;
             $filtered[] = $item;
         }
 
@@ -1595,7 +1611,7 @@ class Controller
     {
         $page = (int)($_REQUEST['page'] ?? 1);
         $page = max(1, $page);
-        $limit = 15;
+        $limit = 20;
         $offset = ($page - 1) * $limit;
 
         // Fetch audit logs count
@@ -1623,7 +1639,7 @@ class Controller
         // Fetch recalculations history
         $recalculations = Capsule::table('mod_chs_recalculations')
             ->orderBy('id', 'desc')
-            ->limit(10)
+            ->limit(20)
             ->get()
             ->map(function ($item) {
                 return (array)$item;

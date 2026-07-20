@@ -492,13 +492,24 @@ class AlertService
         $body .= "<h2>Client Health Weekly Digest Report</h2>";
         $body .= "<p>Here is your weekly summary of client health scores, trend changes, and potential churn risks.</p>";
         
+        $bandsCount = $stats['bands_count'] ?? [];
+        $healthyCount = $bandsCount['healthy'] ?? 0;
+        $watchCount = $bandsCount['watch'] ?? 0;
+        $atRiskCount = $bandsCount['at_risk'] ?? 0;
+        $criticalCount = $bandsCount['critical'] ?? 0;
+        $unevaluatedCount = $stats['unevaluated'] ?? 0;
+
         $body .= "<h3>General Statistics</h3>";
         $body .= "<ul>";
         $body .= "  <li>Average Health Score: <strong>" . ($stats['average_score'] ?? 'N/A') . "/100</strong></li>";
         $body .= "  <li>Total Evaluated Clients: <strong>" . $stats['total_clients'] . "</strong></li>";
-        $body .= "  <li>Healthy Clients (score >= 80): <strong style='color:#10b981;'>" . $stats['healthy'] . "</strong></li>";
-        $body .= "  <li>Watch / Warning Clients (score 60-79): <strong style='color:#f59e0b;'>" . $stats['warning'] . "</strong></li>";
-        $body .= "  <li>At-Risk / Critical Clients (score < 60): <strong style='color:#ef4444;'>" . $stats['critical'] . "</strong></li>";
+        $body .= "  <li>Healthy Clients (score >= 80): <strong style='color:#10b981;'>" . $healthyCount . "</strong></li>";
+        $body .= "  <li>Watch Clients (score 60-79): <strong style='color:#f59e0b;'>" . $watchCount . "</strong></li>";
+        $body .= "  <li>At-Risk Clients (score 35-59): <strong style='color:#f0ad4e;'>" . $atRiskCount . "</strong></li>";
+        $body .= "  <li>Critical Clients (score < 35): <strong style='color:#ef4444;'>" . $criticalCount . "</strong></li>";
+        if ($unevaluatedCount > 0) {
+            $body .= "  <li>Unevaluated Clients: <strong>" . $unevaluatedCount . "</strong></li>";
+        }
         $body .= "  <li>Newly Downgraded this week: <strong>{$downgrades}</strong></li>";
         $body .= "  <li>Newly Improved this week: <strong>{$upgrades}</strong></li>";
         $body .= "</ul>";
