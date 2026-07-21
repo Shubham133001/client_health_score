@@ -1070,6 +1070,22 @@ class Controller
             })
             ->toArray();
 
+        // Sort rules logically: Payment first, then Engagement metrics
+        $ruleOrder = [
+            'avg_days_late'             => 0,
+            'failed_payment_attempts'   => 1,
+            'overdue_invoice_count'     => 2,
+            'login_recency_days'        => 3,
+            'login_count_90_days'       => 4,
+            'downgrade_count_12_months' => 5,
+            'usage_trend'               => 6,
+        ];
+        usort($rules, function ($a, $b) use ($ruleOrder) {
+            $posA = $ruleOrder[$a['metric_key']] ?? 99;
+            $posB = $ruleOrder[$b['metric_key']] ?? 99;
+            return $posA <=> $posB;
+        });
+
         $tiers = Capsule::table('mod_chs_tiers')
             ->where('profile_id', $profileId)
             ->orderBy('min_score', 'desc')

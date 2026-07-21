@@ -87,6 +87,22 @@ add_hook('AdminAreaClientSummaryPage', 1, function ($vars) {
             }
         } catch (\Exception $e) {}
 
+        $tiers = [];
+        try {
+            $tiers = Capsule::table('mod_chs_tiers')
+                ->where('profile_id', $profileId)
+                ->orderBy('min_score', 'desc')
+                ->get()
+                ->toArray();
+            if (empty($tiers) && $profileId !== 1) {
+                $tiers = Capsule::table('mod_chs_tiers')
+                    ->where('profile_id', 1)
+                    ->orderBy('min_score', 'desc')
+                    ->get()
+                    ->toArray();
+            }
+        } catch (\Exception $e) {}
+
         // Fetch manual override
         $now = date('Y-m-d');
         $override = Capsule::table('mod_chs_manual_overrides')
@@ -100,6 +116,7 @@ add_hook('AdminAreaClientSummaryPage', 1, function ($vars) {
         $scoreColor = '#6b7280';
         $paymentScoreColor = '#6b7280';
         $engagementScoreColor = '#6b7280';
+        $statusBandName = 'Unknown';
 
         if ($scoreRecord) {
             $score = (int)($scoreRecord['score'] ?? 100);
@@ -115,10 +132,12 @@ add_hook('AdminAreaClientSummaryPage', 1, function ($vars) {
                     }
                 }
                 $scoreColor = $overrideColor;
+                $statusBandName = $override->tier;
             } else {
                 foreach ($bands as $b) {
                     if ($score >= $b->min_score && $score <= $b->max_score) {
                         $scoreColor = $b->badge_color;
+                        $statusBandName = $b->name;
                     }
                 }
             }
@@ -142,6 +161,7 @@ add_hook('AdminAreaClientSummaryPage', 1, function ($vars) {
             'engagementScoreColor' => $engagementScoreColor,
             'isOverridden'         => !empty($override),
             'overrideTier'         => $override ? $override->tier : '',
+            'statusBandName'       => $statusBandName,
         ]);
     } catch (\Exception $e) {
         return "<div class='alert alert-danger'>Health Score Error: " . htmlspecialchars($e->getMessage()) . "</div>";

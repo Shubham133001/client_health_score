@@ -19,7 +19,7 @@
                             <i class="fa fa-anchor" title="Pinned by override" style="color: #f59e0b;"></i>
                             <span class="label label-warning" style="font-size: 10px; padding: 2px 5px;">PINNED: {$overrideTier}</span>
                         {else}
-                            {$scoreRecord.status_band_name|default:'Unknown'}
+                            {$statusBandName|default:'Unknown'}
                         {/if}
                     </div>
                 </div>

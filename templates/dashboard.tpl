@@ -203,39 +203,51 @@
         <table class="table table-striped table-hover table-condensed" style="margin-bottom: 0;">
             <thead>
                 <tr style="background-color: #f9f9f9;">
-                    <th width="100"><a href="{$moduleLink}&sort=client_id&dir={if $sort == 'client_id' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Client ID {if $sort == 'client_id'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
+                    <th width="80"><a href="{$moduleLink}&sort=client_id&dir={if $sort == 'client_id' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Client ID {if $sort == 'client_id'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
                     <th><a href="{$moduleLink}&sort=name&dir={if $sort == 'name' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Name {if $sort == 'name'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
                     <th>Company Name</th>
                     <th>Email Address</th>
-                    <th width="120" class="text-center"><a href="{$moduleLink}&sort=score&dir={if $sort == 'score' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Health Score {if $sort == 'score'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
-                    <th width="100" class="text-center">Trend</th>
-                    <th width="150">Last Recalculated</th>
-                    <th width="100" class="text-center">Actions</th>
+                    <th width="100" class="text-center"><a href="{$moduleLink}&sort=score&dir={if $sort == 'score' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Health Score {if $sort == 'score'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
+                    <th width="100" class="text-center">Health Tier</th>
+                    <th width="80" class="text-center">Trend</th>
+                    <th width="90" class="text-right"><a href="{$moduleLink}&sort=mrr&dir={if $sort == 'mrr' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">MRR {if $sort == 'mrr'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
+                    <th width="90" class="text-center">Payment Score</th>
+                    <th width="90" class="text-center">Engagement Score</th>
+                    <th width="140">Last Recalculated</th>
+                    <th width="70" class="text-center">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {foreach $clients as $client}
                     <tr>
-                        <td><a href="clientssummary.php?userid={$client.client_id}">{$client.client_id}</a></td>
-                        <td><strong>{$client.firstname} {$client.lastname}</strong></td>
-                        <td>{$client.companyname|default:'-'}</td>
-                        <td><a href="mailto:{$client.email}">{$client.email}</a></td>
+                        <td style="vertical-align: middle;"><a href="clientssummary.php?userid={$client.client_id}">{$client.client_id}</a></td>
+                        <td style="vertical-align: middle;"><strong>{$client.firstname} {$client.lastname}</strong></td>
+                        <td style="vertical-align: middle;">{$client.companyname|default:'-'}</td>
+                        <td style="vertical-align: middle;"><a href="mailto:{$client.email}">{$client.email}</a></td>
                         <td class="text-center" style="vertical-align: middle;">
                             {if $client.score !== null}
                                 <span class="badge" style="background-color: {$client.status_band_color|default:'#6b7280'}; font-weight: bold; padding: 4px 8px; font-size: 12px; display: inline-block;" title="{$client.status_band_name}">
                                     {$client.score}
                                 </span>
-                                <div style="font-size: 10px; font-weight: bold; color: {$client.status_band_color|default:'#6b7280'}; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    {$client.status_band_name}
-                                    {if $client.is_overridden}
-                                        <i class="fa fa-anchor text-warning" title="Manual Override Active (Pinned to {$client.override_tier})"></i>
-                                    {/if}
-                                </div>
                             {else}
                                 <span class="text-muted" style="font-size: 11px;">Unevaluated</span>
                             {/if}
                         </td>
-                        <td class="text-center">
+                        <td class="text-center" style="vertical-align: middle;">
+                            {if $client.score !== null}
+                                <span class="label" style="background-color: {$client.tier_color|default:'#6b7280'}; text-transform: uppercase; font-size: 10px; display: inline-block;">
+                                    {$client.tier_name}
+                                </span>
+                                {if $client.is_overridden}
+                                    <div style="font-size: 9px; font-weight: bold; color: #f59e0b; margin-top: 2px;">
+                                        <i class="fa fa-anchor" title="Manual Override Active (Pinned to {$client.override_tier})"></i> PINNED
+                                    </div>
+                                {/if}
+                            {else}
+                                -
+                            {/if}
+                        </td>
+                        <td class="text-center" style="vertical-align: middle;">
                             {if $client.trend == 'up'}
                                 <span class="text-success" title="Improving"><i class="fa fa-arrow-up"></i> Up</span>
                             {elseif $client.trend == 'down'}
@@ -246,14 +258,31 @@
                                 -
                             {/if}
                         </td>
-                        <td>{if $client.updated_at}{$client.updated_at}{else}Never{/if}</td>
-                        <td class="text-center">
+                        <td class="text-right" style="vertical-align: middle; font-weight: bold;">
+                            ${$client.mrr|number_format:2}
+                        </td>
+                        <td class="text-center" style="vertical-align: middle;">
+                            {if $client.payment_score !== null}
+                                <span style="font-weight: bold;">{$client.payment_score}</span>/100
+                            {else}
+                                -
+                            {/if}
+                        </td>
+                        <td class="text-center" style="vertical-align: middle;">
+                            {if $client.engagement_score !== null}
+                                <span style="font-weight: bold;">{$client.engagement_score}</span>/100
+                            {else}
+                                -
+                            {/if}
+                        </td>
+                        <td style="vertical-align: middle;">{if $client.updated_at}{$client.updated_at}{else}Never{/if}</td>
+                        <td class="text-center" style="vertical-align: middle;">
                             <a href="{$moduleLink}&action=client&id={$client.client_id}" class="btn btn-default btn-xs" style="font-weight: bold;"><i class="fa fa-search"></i> View</a>
                         </td>
                     </tr>
                 {foreachelse}
                     <tr>
-                        <td colspan="8" class="text-center text-muted" style="padding: 20px 0;">No client health scores found.</td>
+                        <td colspan="12" class="text-center text-muted" style="padding: 20px 0;">No client health scores found.</td>
                     </tr>
                 {/foreach}
             </tbody>

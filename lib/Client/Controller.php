@@ -474,6 +474,8 @@ class Controller
                 'tblclients.status as client_status',
                 'mod_chs_scores.score',
                 'mod_chs_scores.trend',
+                'mod_chs_scores.payment_score',
+                'mod_chs_scores.engagement_score',
                 'mod_chs_scores.breakdown',
                 'mod_chs_scores.updated_at',
             ]);
@@ -707,6 +709,8 @@ class Controller
             $clientId = (int)$arr['client_id'];
             $profileId = $this->resolveProfileIdForClient($clientId);
             
+            $arr['mrr'] = $this->getClientMRR($clientId);
+            
             $clientTiers = $tiersByProfile[$profileId] ?? $defaultTiers;
             if (empty($clientTiers)) {
                 $clientTiers = $defaultTiers;
@@ -724,7 +728,12 @@ class Controller
                 foreach ($clientTiers as $t) {
                     if ($arr['score'] >= $t->min_score && $arr['score'] <= $t->max_score) {
                         $arr['tier_name'] = $t->name;
-                        $arr['tier_color'] = $t->badge_color;
+                        break;
+                    }
+                }
+                foreach ($clientBands as $b) {
+                    if ($arr['score'] >= $b->min_score && $arr['score'] <= $b->max_score) {
+                        $arr['tier_color'] = $b->badge_color;
                         break;
                     }
                 }
@@ -759,6 +768,8 @@ class Controller
                 }
                 $arr['status_band_name'] = 'PINNED: ' . $ov->tier;
                 $arr['status_band_color'] = $overrideColor;
+                $arr['tier_name'] = $ov->tier;
+                $arr['tier_color'] = $overrideColor;
             } else {
                 $arr['is_overridden'] = false;
             }
