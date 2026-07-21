@@ -9,20 +9,21 @@
 
     {if $message}
         {if strpos($message, 'Error') === 0}
-            <div class="alert alert-danger" style="margin-bottom: 20px;">
-                <i class="fa fa-exclamation-triangle"></i> {$message}
-            </div>
+            <!-- Error message data element to pass to JS -->
+            <div id="chs-error-message-data" style="display: none;" data-message="{$message|escape}"></div>
         {else}
-            <div class="alert alert-success" style="margin-bottom: 20px;">
-                <i class="fa fa-check"></i> {$message}
-            </div>
+            <!-- Success message data element to pass to JS -->
+            <div id="chs-success-message-data" style="display: none;" data-message="{$message|escape}"></div>
         {/if}
     {/if}
 
     <!-- 1. Scoring Profiles Management -->
     <div class="panel panel-default" style="margin-bottom: 20px;">
         <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px;">
-            <span><i class="fa fa-sliders"></i> Scoring Profiles</span>
+            <span>
+                <i class="fa fa-sliders"></i> Scoring Profiles
+                <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Manage configured scoring profiles. The global default profile applies unless a specific assignment matches." style="cursor: help; margin-left: 5px;"></i>
+            </span>
             <button type="button" class="btn btn-primary btn-xs" data-toggle="modal" data-target="#addProfileModal">
                 <i class="fa fa-plus"></i> Add New Profile
             </button>
@@ -74,7 +75,10 @@
         <!-- Left Side: Profile Assignments -->
         <div class="col-md-7">
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-exchange"></i> Profile Assignments Hierarchy</div>
+                <div class="panel-heading" style="font-weight: bold;">
+                    <i class="fa fa-exchange"></i> Profile Assignments Hierarchy
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Lists rules determining which scoring profile applies to specific clients, groups, or products." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <table class="table table-striped" style="margin-bottom: 0; font-size: 12px;">
                     <thead>
                         <tr style="background-color: #f9f9f9;">
@@ -108,7 +112,10 @@
         <!-- Right Side: Add New Assignment Form -->
         <div class="col-md-5">
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-plus-circle"></i> Create Profile Assignment</div>
+                <div class="panel-heading" style="font-weight: bold;">
+                    <i class="fa fa-plus-circle"></i> Create Profile Assignment
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Assign a specific scoring profile to target clients, client groups, or individual products." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body">
                     <form method="post" action="{$moduleLink}&action=settings&sub=add_assignment">
                         <div class="form-group">
@@ -162,7 +169,10 @@
             <!-- General Settings & Alerts -->
             <div class="col-md-6">
                 <div class="panel panel-default" style="margin-bottom: 20px;">
-                    <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-cogs"></i> Global Alert & Recalculation Settings</div>
+                    <div class="panel-heading" style="font-weight: bold;">
+                        <i class="fa fa-cogs"></i> Global Alert & Recalculation Settings
+                        <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Configure system-wide parameters for cron tasks, alerts thresholds, cooldown intervals, and types." style="cursor: help; margin-left: 5px;"></i>
+                    </div>
                     <div class="panel-body" style="padding: 15px;">
                         <div class="form-group" style="display: block; margin-bottom: 15px;">
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Cron Batch Recalculation Size</label>
@@ -193,7 +203,10 @@
             <!-- Webhook Integrations & Weekly Digest Settings -->
             <div class="col-md-6">
                 <div class="panel panel-default" style="margin-bottom: 20px;">
-                    <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-share-alt"></i> Webhook Notification Integrations</div>
+                    <div class="panel-heading" style="font-weight: bold;">
+                        <i class="fa fa-share-alt"></i> Webhook Notification Integrations
+                        <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Define third-party URLs to dispatch channel alerts on significant client score drops or status changes." style="cursor: help; margin-left: 5px;"></i>
+                    </div>
                     <div class="panel-body" style="padding: 15px;">
                         <div class="form-group" style="display: block; margin-bottom: 15px;">
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Slack Webhook URL</label>
@@ -207,7 +220,10 @@
                 </div>
 
                 <div class="panel panel-default" style="margin-bottom: 20px;">
-                    <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-envelope"></i> Weekly Digest Settings</div>
+                    <div class="panel-heading" style="font-weight: bold;">
+                        <i class="fa fa-envelope"></i> Weekly Digest Settings
+                        <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Configure timing and recipients for automated weekly summaries of client health score trends." style="cursor: help; margin-left: 5px;"></i>
+                    </div>
                     <div class="panel-body" style="padding: 15px;">
                         <div class="form-group" style="display: block; margin-bottom: 15px;">
                             <label style="font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px;">Enable Weekly Digest Email</label>
@@ -315,5 +331,98 @@ function toggleAssignmentFields() {
         productSelect.disabled = false;
         productSelect.name = 'value';
     }
+    // Initialize tooltips
+    if (window.jQuery && jQuery.fn.tooltip) {
+        jQuery('[data-toggle="tooltip"]').tooltip();
+    }
 }
+
+jQuery(document).ready(function($) {
+    function getOrCreateToastContainer() {
+        var toastContainer = $('#chs-toast-container');
+        if (toastContainer.length === 0) {
+            toastContainer = $('<div id="chs-toast-container" style="position: fixed !important; top: 20px !important; right: 20px !important; z-index: 99999 !important; pointer-events: none; width: 350px;"></div>');
+            $('body').append(toastContainer);
+        }
+        return toastContainer;
+    }
+
+    function showSuccessToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-success-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-success-toast" class="alert alert-success" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #5cb85c; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-check" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Success</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    function showErrorToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-error-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-error-toast" class="alert alert-danger" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #d9534f; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-exclamation-triangle" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Error</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    // Success toast trigger if data-element is present
+    var successData = $('#chs-success-message-data');
+    if (successData.length > 0) {
+        showSuccessToast(successData.data('message'));
+    }
+
+    // Error toast trigger if data-element is present
+    var errorData = $('#chs-error-message-data');
+    if (errorData.length > 0) {
+        showErrorToast(errorData.data('message'));
+    }
+});
 </script>

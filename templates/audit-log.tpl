@@ -9,7 +9,10 @@
 
     <!-- Row 1: Batch Recalculations History -->
     <div class="panel panel-default" style="margin-bottom: 20px;">
-        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-refresh"></i> Batch Recalculations History</div>
+        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+            <i class="fa fa-refresh"></i> Batch Recalculations History
+            <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Tracks bulk recalculation runs triggered manually or via cron tasks." style="cursor: help; margin-left: 5px;"></i>
+        </div>
         <div class="panel-body" style="padding: 0;">
             <table class="table table-striped table-hover table-condensed" style="margin-bottom: 0;">
                 <thead>
@@ -54,7 +57,10 @@
 
     <!-- Row 2: Security & Configuration Audits -->
     <div class="panel panel-default" style="margin-bottom: 20px;">
-        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-shield"></i> Security & Operations Audit Trail</div>
+        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+            <i class="fa fa-shield"></i> Security & Operations Audit Trail
+            <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Logs all administrator actions, config updates, profile changes, and manual score overrides." style="cursor: help; margin-left: 5px;"></i>
+        </div>
         <div class="panel-body" style="padding: 0;">
             <table class="table table-striped table-hover table-condensed" style="margin-bottom: 0;">
                 <thead>
@@ -110,3 +116,11 @@
         {/if}
     </div>
 </div>
+
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+    if ($.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
+});
+</script>

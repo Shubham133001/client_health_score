@@ -1151,6 +1151,35 @@ class Controller
             return "Profile not found.";
         }
 
+        // 0. Validate weights per section (must sum to exactly 100%)
+        $ruleWeights = $_POST['weights'] ?? [];
+        $ruleStatus = $_POST['enabled'] ?? [];
+        
+        $paymentSum = 0.0;
+        $engagementSum = 0.0;
+        
+        $paymentKeys = ['avg_days_late', 'failed_payment_attempts', 'overdue_invoice_count'];
+        $engagementKeys = ['login_recency_days', 'login_count_90_days', 'downgrade_count_12_months', 'usage_trend'];
+        
+        foreach ($ruleWeights as $key => $weight) {
+            $isEnabled = isset($ruleStatus[$key]) ? 1 : 0;
+            if ($isEnabled) {
+                $weightVal = (float)$weight;
+                if (in_array($key, $paymentKeys)) {
+                    $paymentSum += $weightVal;
+                } elseif (in_array($key, $engagementKeys)) {
+                    $engagementSum += $weightVal;
+                }
+            }
+        }
+        
+        if (abs($paymentSum - 100.0) > 0.01) {
+            return "Error: The sum of active Payment Signals weights must be exactly 100% (currently " . number_format($paymentSum, 2) . "%).";
+        }
+        if (abs($engagementSum - 100.0) > 0.01) {
+            return "Error: The sum of active Engagement Signals weights must be exactly 100% (currently " . number_format($engagementSum, 2) . "%).";
+        }
+
         // 1. Update Profile Metadata & General settings
         $name = trim($_POST['name'] ?? '');
         $description = trim($_POST['description'] ?? '');

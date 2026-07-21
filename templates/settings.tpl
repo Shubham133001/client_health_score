@@ -9,13 +9,11 @@
 
     {if $message}
         {if strpos($message, 'Error') === 0}
-            <div class="alert alert-danger" style="margin-bottom: 20px;">
-                <i class="fa fa-exclamation-triangle"></i> {$message}
-            </div>
+            <!-- Error message data element to pass to JS -->
+            <div id="chs-error-message-data" style="display: none;" data-message="{$message|escape}"></div>
         {else}
-            <div class="alert alert-success" style="margin-bottom: 20px;">
-                <i class="fa fa-check"></i> {$message}
-            </div>
+            <!-- Success message data element to pass to JS -->
+            <div id="chs-success-message-data" style="display: none;" data-message="{$message|escape}"></div>
         {/if}
     {/if}
 
@@ -264,3 +262,99 @@
         </div>
     </form>
 </div>
+
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+    function getOrCreateToastContainer() {
+        var toastContainer = $('#chs-toast-container');
+        if (toastContainer.length === 0) {
+            toastContainer = $('<div id="chs-toast-container" style="position: fixed !important; top: 20px !important; right: 20px !important; z-index: 99999 !important; pointer-events: none; width: 350px;"></div>');
+            $('body').append(toastContainer);
+        }
+        return toastContainer;
+    }
+
+    function showSuccessToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-success-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-success-toast" class="alert alert-success" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #5cb85c; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-check" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Success</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    function showErrorToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-error-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-error-toast" class="alert alert-danger" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #d9534f; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-exclamation-triangle" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Error</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    // Initialize tooltips
+    if ($.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
+
+    // Success toast trigger if data-element is present
+    var successData = $('#chs-success-message-data');
+    if (successData.length > 0) {
+        showSuccessToast(successData.data('message'));
+    }
+
+    // Error toast trigger if data-element is present
+    var errorData = $('#chs-error-message-data');
+    if (errorData.length > 0) {
+        showErrorToast(errorData.data('message'));
+    }
+});
+</script>

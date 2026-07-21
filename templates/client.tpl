@@ -6,9 +6,8 @@
     </div>
 
     {if $success}
-        <div class="alert alert-success" style="margin-bottom: 20px;">
-            <i class="fa fa-check"></i> Health score recalculated successfully.
-        </div>
+        <!-- Success message data element to pass to JS -->
+        <div id="chs-success-message-data" style="display: none;" data-message="Health score recalculated successfully."></div>
     {/if}
 
     <!-- Client Header File Panel -->
@@ -59,7 +58,7 @@
                         {elseif $scoreRecord.trend == 'down'}
                             <span class="text-danger"><i class="fa fa-arrow-down"></i> Declining</span>
                         {else}
-                            <span class="text-muted"><i class="fa fa-arrow-right"></i> Stable</span>
+                            <span class="text-muted"><i class="fa fa-minus"></i> Stable</span>
                         {/if}
                     </div>
                 </div>
@@ -71,7 +70,10 @@
         <!-- Left Side: Risk Drivers & Deductions breakdown -->
         <div class="col-md-7">
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-list-ul"></i> Scoring Deductions & Drivers</div>
+                <div class="panel-heading" style="font-weight: bold;">
+                    <i class="fa fa-list-ul"></i> Scoring Deductions & Drivers
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Detailed breakdown of health score subtractions and active risk drivers impacting the client's score." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 0;">
                     <table class="table table-striped" style="margin-bottom: 0;">
                         <thead>
@@ -116,7 +118,10 @@
 
             <!-- SVG History Chart -->
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold;"><i class="fa fa-line-chart"></i> 30-Day Historical Trend</div>
+                <div class="panel-heading" style="font-weight: bold;">
+                    <i class="fa fa-line-chart"></i> 30-Day Historical Trend
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Visual historical tracking of the client's calculated health score over the last 30 snapshots." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body text-center" style="padding: 20px;">
                     {if $history}
                         <!-- SVG line chart container -->
@@ -152,6 +157,7 @@
             <div class="panel panel-{if $override}warning{else}default{/if}" style="margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <div class="panel-heading" style="font-weight: bold; {if $override}background-color: #fcf8e3; color: #8a6d3b; border-color: #faebcc;{else}background-color: #f5f5f5;{/if}">
                     <i class="fa fa-anchor"></i> Manual Health Tier Override
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Pins this client to a specific health tier temporarily or permanently, bypassing automated recalculations." style="cursor: help; margin-left: 5px;"></i>
                 </div>
                 <div class="panel-body">
                     {if $override}
@@ -207,7 +213,10 @@
 
             <!-- Payment Signals -->
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-credit-card"></i> Payment & Invoice Signals</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-credit-card"></i> Payment & Invoice Signals
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Current billing telemetry values including unpaid invoices, overdue invoices, and active services counts." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
                         <span>Unpaid Invoices:</span>
@@ -226,7 +235,10 @@
 
             <!-- Engagement Signals -->
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-ticket"></i> Support & Engagement Signals</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-ticket"></i> Support & Engagement Signals
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Current activity telemetry values including open support tickets count and the last score update timestamp." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
                         <span>Active Support Tickets:</span>
@@ -241,7 +253,10 @@
 
             <!-- Alert History -->
             <div class="panel panel-default" style="margin-bottom: 20px;">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-bell"></i> Alert History</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-bell"></i> Alert History
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Logs of system notifications and alerts dispatched for health status changes or risk triggers on this account." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 0;">
                     {if $alerts}
                         <table class="table table-striped" style="margin-bottom: 0; font-size: 12px;">
@@ -332,3 +347,59 @@ jQuery(document).ready(function($) {
 });
 </script>
 {/if}
+
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+    function getOrCreateToastContainer() {
+        var toastContainer = $('#chs-toast-container');
+        if (toastContainer.length === 0) {
+            toastContainer = $('<div id="chs-toast-container" style="position: fixed !important; top: 20px !important; right: 20px !important; z-index: 99999 !important; pointer-events: none; width: 350px;"></div>');
+            $('body').append(toastContainer);
+        }
+        return toastContainer;
+    }
+
+    function showSuccessToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-success-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-success-toast" class="alert alert-success" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #5cb85c; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-check" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Success</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    if ($.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
+    
+    // Success toast trigger if data-element is present
+    var successData = $('#chs-success-message-data');
+    if (successData.length > 0) {
+        showSuccessToast(successData.data('message'));
+    }
+});
+</script>

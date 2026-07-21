@@ -12,7 +12,10 @@
         <!-- MRR by Health Tier -->
         <div class="col-md-4">
             <div class="panel panel-default" style="margin-bottom: 0; height: 180px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-money"></i> MRR by Health Tier</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-money"></i> MRR by Health Tier
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Distribution of monthly recurring revenue (MRR) based on client health tiers." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 15px;">
                     {foreach $mrrByTier as $tier}
                     <div style="margin-bottom: 8px; font-size: 13px;">
@@ -27,7 +30,10 @@
         <!-- Risk Movement Stats -->
         <div class="col-md-4">
             <div class="panel panel-default" style="margin-bottom: 0; height: 180px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-line-chart"></i> Risk Movement (Trend)</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-line-chart"></i> Risk Movement (Trend)
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Monitors if client health scores are improving, declining, or stable compared to their prior score." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 15px;">
                     <div style="margin-bottom: 8px; font-size: 13px;">
                         <span class="text-success" style="font-weight: bold;"><i class="fa fa-arrow-up"></i> Improving:</span> 
@@ -48,7 +54,10 @@
         <!-- Root Cause Analysis (Top 3 Deductions) -->
         <div class="col-md-4">
             <div class="panel panel-default" style="margin-bottom: 0; height: 180px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-search-plus"></i> Root Cause Breakdown</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+                    <i class="fa fa-search-plus"></i> Root Cause Breakdown
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Lists the top active score penalty points subtracted from clients across your client base." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 10px 15px;">
                     <table class="table table-condensed" style="font-size: 11px; margin-bottom: 0;">
                         <thead>
@@ -74,7 +83,10 @@
 
     <!-- Middle Section: Score Trend History -->
     <div class="panel panel-default" style="margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-history"></i> Average Health Score Trend (Last 30 Snapshots)</div>
+        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+            <i class="fa fa-history"></i> Average Health Score Trend (Last 30 Snapshots)
+            <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Tracks the historical daily average health score of all clients over the last 30 snapshots." style="cursor: help; margin-left: 5px;"></i>
+        </div>
         <div class="panel-body" style="padding: 10px 15px;">
             {if empty($trendHistory)}
                 <p class="text-muted text-center" style="margin-bottom: 0; padding: 10px 0;">No history snapshot data available yet.</p>
@@ -95,7 +107,10 @@
         <!-- Left Side: High Churn Risk Report -->
         <div class="col-md-6">
             <div class="panel panel-danger" style="margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; font-size: 13px;"><i class="fa fa-exclamation-triangle"></i> Top High Churn Risks (Score < {$watchMin})</div>
+                <div class="panel-heading" style="font-weight: bold; font-size: 13px;">
+                    <i class="fa fa-exclamation-triangle"></i> Top High Churn Risks (Score < {$watchMin})
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Lists clients with low health scores who represent an immediate churn or contraction threat." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 0;">
                     <table class="table table-striped table-hover table-condensed" style="margin-bottom: 0;">
                         <thead>
@@ -122,11 +137,11 @@
                                     </td>
                                     <td class="text-center">
                                         {if $client.trend == 'up'}
-                                            <span class="text-success"><i class="fa fa-arrow-up"></i> Up</span>
+                                            <span class="text-success"><i class="fa fa-arrow-up"></i> Improving</span>
                                         {elseif $client.trend == 'down'}
-                                            <span class="text-danger"><i class="fa fa-arrow-down"></i> Down</span>
+                                            <span class="text-danger"><i class="fa fa-arrow-down"></i> Declining</span>
                                         {else}
-                                            <span class="text-muted"><i class="fa fa-arrow-right"></i> Stable</span>
+                                            <span class="text-muted"><i class="fa fa-minus"></i> Stable</span>
                                         {/if}
                                     </td>
                                     <td class="text-center">
@@ -165,7 +180,10 @@
         <!-- Right Side: VIP Customers Report -->
         <div class="col-md-6">
             <div class="panel panel-success" style="margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; font-size: 13px;"><i class="fa fa-trophy"></i> Top VIP Customers (Score >= {$healthyMin})</div>
+                <div class="panel-heading" style="font-weight: bold; font-size: 13px;">
+                    <i class="fa fa-trophy"></i> Top VIP Customers (Score >= {$healthyMin})
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Highlights the highest-scoring, highly active clients who are strong candidates for upsells or advocacy." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <div class="panel-body" style="padding: 0;">
                     <table class="table table-striped table-hover table-condensed" style="margin-bottom: 0;">
                         <thead>
@@ -192,11 +210,11 @@
                                     </td>
                                     <td class="text-center">
                                         {if $client.trend == 'up'}
-                                            <span class="text-success"><i class="fa fa-arrow-up"></i> Up</span>
+                                            <span class="text-success"><i class="fa fa-arrow-up"></i> Improving</span>
                                         {elseif $client.trend == 'down'}
-                                            <span class="text-danger"><i class="fa fa-arrow-down"></i> Down</span>
+                                            <span class="text-danger"><i class="fa fa-arrow-down"></i> Declining</span>
                                         {else}
-                                            <span class="text-muted"><i class="fa fa-arrow-right"></i> Stable</span>
+                                            <span class="text-muted"><i class="fa fa-minus"></i> Stable</span>
                                         {/if}
                                     </td>
                                     <td class="text-center">
@@ -233,3 +251,11 @@
         </div>
     </div>
 </div>
+
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+    if ($.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
+});
+</script>

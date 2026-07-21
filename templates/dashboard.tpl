@@ -59,7 +59,10 @@
 
     <!-- Health Status Distribution Visual bar -->
     <div class="panel panel-default" style="margin-bottom: 20px;">
-        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;"><i class="fa fa-users"></i> Client Health Status Distribution</div>
+        <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5;">
+            <i class="fa fa-users"></i> Client Health Status Distribution
+            <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Visual breakdown of clients by health status (Healthy, Watch, At-Risk, Critical) based on current scores." style="cursor: help; margin-left: 5px;"></i>
+        </div>
         <div class="panel-body" style="padding: 12px;">
             {assign var="totalDist" value=$stats.total_clients|default:1}
             <div class="progress" style="height: 24px; margin-bottom: 0;">
@@ -93,7 +96,10 @@
     <div class="row" style="margin-bottom: 20px;">
         <div class="col-md-6">
             <div class="panel panel-danger" style="margin-bottom: 0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; background-color: #f2dede; color: #a94442; border-color: #ebccd1;"><i class="fa fa-arrow-down"></i> Recent Score Drops</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #f2dede; color: #a94442; border-color: #ebccd1;">
+                    <i class="fa fa-arrow-down"></i> Recent Score Drops
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Lists clients whose health scores dropped most significantly compared to their prior evaluation." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <table class="table table-condensed table-striped" style="font-size: 11px; margin-bottom: 0;">
                     <thead>
                         <tr>
@@ -124,7 +130,10 @@
         </div>
         <div class="col-md-6">
             <div class="panel panel-success" style="margin-bottom: 0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div class="panel-heading" style="font-weight: bold; background-color: #dff0d8; color: #3c763d; border-color: #d6e9c6;"><i class="fa fa-arrow-up"></i> Recent Improvements</div>
+                <div class="panel-heading" style="font-weight: bold; background-color: #dff0d8; color: #3c763d; border-color: #d6e9c6;">
+                    <i class="fa fa-arrow-up"></i> Recent Improvements
+                    <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Lists clients whose health scores increased most significantly compared to their prior evaluation." style="cursor: help; margin-left: 5px;"></i>
+                </div>
                 <table class="table table-condensed table-striped" style="font-size: 11px; margin-bottom: 0;">
                     <thead>
                         <tr>
@@ -158,7 +167,10 @@
     <!-- Client Grid Table -->
     <div class="panel panel-default">
         <div class="panel-heading" style="font-weight: bold; background-color: #f5f5f5; display: flex; justify-content: space-between; align-items: center; padding: 8px 15px;">
-            <span><i class="fa fa-list"></i> Evaluated Client Health List</span>
+            <span>
+                <i class="fa fa-list"></i> Evaluated Client Health List
+                <i class="fa fa-info-circle text-muted" data-toggle="tooltip" data-placement="top" title="Detailed overview of all client health scores, trend directions, billing, and engagement scores." style="cursor: help; margin-left: 5px;"></i>
+            </span>
         </div>
         <div class="panel-body" style="padding: 15px; border-bottom: 1px solid #ddd;">
             <!-- Filters form -->
@@ -205,15 +217,13 @@
                 <tr style="background-color: #f9f9f9;">
                     <th width="80"><a href="{$moduleLink}&sort=client_id&dir={if $sort == 'client_id' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Client ID {if $sort == 'client_id'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
                     <th><a href="{$moduleLink}&sort=name&dir={if $sort == 'name' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Name {if $sort == 'name'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
-                    <th>Company Name</th>
                     <th>Email Address</th>
                     <th width="100" class="text-center"><a href="{$moduleLink}&sort=score&dir={if $sort == 'score' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">Health Score {if $sort == 'score'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
-                    <th width="100" class="text-center">Health Tier</th>
                     <th width="80" class="text-center">Trend</th>
                     <th width="90" class="text-right"><a href="{$moduleLink}&sort=mrr&dir={if $sort == 'mrr' && $dir == 'desc'}asc{else}desc{/if}&search={$search}&status={$statusFilter}">MRR {if $sort == 'mrr'}{if $dir == 'asc'}▲{else}▼{/if}{/if}</a></th>
                     <th width="90" class="text-center">Payment Score</th>
                     <th width="90" class="text-center">Engagement Score</th>
-                    <th width="140">Last Recalculated</th>
+                    <th width="140">Updated At</th>
                     <th width="70" class="text-center">Actions</th>
                 </tr>
             </thead>
@@ -221,8 +231,23 @@
                 {foreach $clients as $client}
                     <tr>
                         <td style="vertical-align: middle;"><a href="clientssummary.php?userid={$client.client_id}">{$client.client_id}</a></td>
-                        <td style="vertical-align: middle;"><strong>{$client.firstname} {$client.lastname}</strong></td>
-                        <td style="vertical-align: middle;">{$client.companyname|default:'-'}</td>
+                        <td style="vertical-align: middle;">
+                            <a href="clientssummary.php?userid={$client.client_id}" style="font-weight: bold; font-size: 13px; display: inline-block; margin-bottom: 2px;">
+                                {$client.firstname} {$client.lastname}
+                            </a>
+                            {if $client.score !== null}
+                                <div style="margin-top: 2px;">
+                                    <span class="label" style="background-color: {$client.tier_color|default:'#6b7280'}; text-transform: uppercase; font-size: 9px; padding: 1px 4px; display: inline-block;">
+                                        {$client.tier_name}
+                                    </span>
+                                    {if $client.is_overridden}
+                                        <span style="font-size: 9px; font-weight: bold; color: #f59e0b; margin-left: 4px; display: inline-block; vertical-align: middle;">
+                                            <i class="fa fa-anchor" title="Manual Override Active (Pinned to {$client.override_tier})"></i> PINNED
+                                        </span>
+                                    {/if}
+                                </div>
+                            {/if}
+                        </td>
                         <td style="vertical-align: middle;"><a href="mailto:{$client.email}">{$client.email}</a></td>
                         <td class="text-center" style="vertical-align: middle;">
                             {if $client.score !== null}
@@ -234,26 +259,12 @@
                             {/if}
                         </td>
                         <td class="text-center" style="vertical-align: middle;">
-                            {if $client.score !== null}
-                                <span class="label" style="background-color: {$client.tier_color|default:'#6b7280'}; text-transform: uppercase; font-size: 10px; display: inline-block;">
-                                    {$client.tier_name}
-                                </span>
-                                {if $client.is_overridden}
-                                    <div style="font-size: 9px; font-weight: bold; color: #f59e0b; margin-top: 2px;">
-                                        <i class="fa fa-anchor" title="Manual Override Active (Pinned to {$client.override_tier})"></i> PINNED
-                                    </div>
-                                {/if}
-                            {else}
-                                -
-                            {/if}
-                        </td>
-                        <td class="text-center" style="vertical-align: middle;">
                             {if $client.trend == 'up'}
-                                <span class="text-success" title="Improving"><i class="fa fa-arrow-up"></i> Up</span>
+                                <span class="text-success" title="Improving"><i class="fa fa-arrow-up"></i> Improving</span>
                             {elseif $client.trend == 'down'}
-                                <span class="text-danger" title="Declining"><i class="fa fa-arrow-down"></i> Down</span>
+                                <span class="text-danger" title="Declining"><i class="fa fa-arrow-down"></i> Declining</span>
                             {elseif $client.trend == 'stable'}
-                                <span class="text-muted" title="Stable"><i class="fa fa-arrow-right"></i> Stable</span>
+                                <span class="text-muted" title="Stable"><i class="fa fa-minus"></i> Stable</span>
                             {else}
                                 -
                             {/if}
@@ -282,7 +293,7 @@
                     </tr>
                 {foreachelse}
                     <tr>
-                        <td colspan="12" class="text-center text-muted" style="padding: 20px 0;">No client health scores found.</td>
+                        <td colspan="10" class="text-center text-muted" style="padding: 20px 0;">No client health scores found.</td>
                     </tr>
                 {/foreach}
             </tbody>
@@ -330,6 +341,81 @@ jQuery(document).ready(function($) {
         }
     });
     
+    function getOrCreateToastContainer() {
+        var toastContainer = $('#chs-toast-container');
+        if (toastContainer.length === 0) {
+            toastContainer = $('<div id="chs-toast-container" style="position: fixed !important; top: 20px !important; right: 20px !important; z-index: 99999 !important; pointer-events: none; width: 350px;"></div>');
+            $('body').append(toastContainer);
+        }
+        return toastContainer;
+    }
+
+    function showSuccessToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-success-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-success-toast" class="alert alert-success" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #5cb85c; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-check" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Success</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
+    function showErrorToast(message) {
+        var container = getOrCreateToastContainer();
+        var toast = $('#chs-error-toast');
+        if (toast.length === 0) {
+            toast = $('<div id="chs-error-toast" class="alert alert-danger" style="pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #d9534f; margin-bottom: 0; transition: all 0.3s ease; opacity: 0; transform: translateY(-20px);">' +
+                '<div style="display: flex; align-items: flex-start; gap: 8px;">' +
+                    '<i class="fa fa-exclamation-triangle" style="margin-top: 2px;"></i>' +
+                    '<div style="flex: 1;">' +
+                        '<strong style="display: block; margin-bottom: 3px;">Error</strong>' +
+                        '<div class="toast-body-content" style="font-size: 11px; line-height: 1.4;"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>');
+            container.append(toast);
+        }
+        
+        toast.find('.toast-body-content').html(message);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '1',
+                'transform': 'translateY(0)'
+            });
+        }, 50);
+        
+        setTimeout(function() {
+            toast.css({
+                'opacity': '0',
+                'transform': 'translateY(-20px)'
+            });
+        }, 5000);
+    }
+
     function runRecalcChunk(offset) {
         $.ajax({
             url: 'addonmodules.php?module=client_health_score&action=ajax_recalculate',
@@ -341,9 +427,10 @@ jQuery(document).ready(function($) {
                     if (response.done || response.total === 0) {
                         $('#recalcProgressBar').css('width', '100%').text('100%').addClass('progress-bar-success');
                         $('#recalcProgressText').html('<strong class="text-success"><i class="fa fa-check"></i> Complete!</strong> All health scores updated successfully.');
+                        showSuccessToast('All health scores recalculated successfully.');
                         setTimeout(function() {
                             location.reload();
-                        }, 1500);
+                        }, 2000);
                     } else {
                         var percent = Math.round((response.next_offset / response.total) * 100);
                         $('#recalcProgressBar').css('width', percent + '%').text(percent + '%');
@@ -353,15 +440,22 @@ jQuery(document).ready(function($) {
                 } else {
                     $('#recalcProgressText').html('<strong class="text-danger"><i class="fa fa-exclamation-triangle"></i> Error:</strong> ' + response.error);
                     $('#btnRecalculateAll').prop('disabled', false).html('<i class="fa fa-refresh"></i> Recalc All');
+                    showErrorToast('Recalculation failed: ' + response.error);
                     isRecalculating = false;
                 }
             },
             error: function(xhr, status, error) {
                 $('#recalcProgressText').html('<strong class="text-danger"><i class="fa fa-exclamation-triangle"></i> connection error:</strong> ' + error);
                 $('#btnRecalculateAll').prop('disabled', false).html('<i class="fa fa-refresh"></i> Recalc All');
+                showErrorToast('Connection error: ' + error);
                 isRecalculating = false;
             }
         });
+    }
+
+    // Initialize tooltips
+    if ($.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip();
     }
 });
 </script>
